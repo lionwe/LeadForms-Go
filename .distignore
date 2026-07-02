@@ -1,0 +1,12 @@
+.git
+.github
+.distignore
+build
+node_modules
+package.json
+package-lock.json
+scripts
+tests
+*.log
+*.json
+
