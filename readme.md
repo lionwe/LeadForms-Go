@@ -20,11 +20,6 @@ Do not commit the JSON key. Configure the spreadsheet ID, sheet name, and field 
 ## Shortcodes
 
 - `[leadforms_go_form id="1"]`
-- `[reintegration_form id="1"]` for migrated legacy forms
-
-## Migration
-
-Activation copies legacy reIntegration forms, history, and connector settings into new tables/options. Legacy data is never deleted. Google Sheets is disabled after migration until Service Account configuration is complete.
 
 ## Delivery queue
 
