@@ -139,7 +139,7 @@ final class Repositories
 		$now = current_time('mysql');
 		$attempts = (int) $delivery['attempts'] + 1;
 		$retryable = $result->retryable ?? (! $result->success && ($result->http_code === 0 || $result->http_code === 408 || $result->http_code === 425 || $result->http_code === 429 || $result->http_code >= 500));
-		$status = $result->success ? 'success' : (($retryable && $attempts < $max_attempts) ? 'queued' : 'failed');
+		$status = $result->success ? 'sent' : (($retryable && $attempts < $max_attempts) ? 'queued' : 'failed');
 		$next_attempt = $status === 'queued' ? wp_date('Y-m-d H:i:s', time() + self::retry_delay($attempts), wp_timezone()) : null;
 		$message = sanitize_text_field($result->message);
 		$updated = $wpdb->update($tables['deliveries'], [
@@ -158,7 +158,7 @@ final class Repositories
 		$wpdb->insert($tables['attempts'], [
 			'delivery_id' => (int) $delivery['id'],
 			'attempt_number' => $attempt_number,
-			'status' => $result->success ? 'success' : 'failed',
+			'status' => $result->success ? 'sent' : 'failed',
 			'http_code' => $result->http_code ?: null,
 			'error_message' => $message,
 			'created_at' => $now,
@@ -251,7 +251,7 @@ final class Repositories
 		if ($statuses === []) return;
 		if (in_array('processing', $statuses, true)) $status = 'processing';
 		elseif (in_array('queued', $statuses, true)) $status = 'queued';
-		elseif (count(array_filter($statuses, static fn (string $value): bool => $value === 'success')) === count($statuses)) $status = 'success';
+		elseif (count(array_filter($statuses, static fn (string $value): bool => in_array($value, ['success', 'sent'], true))) === count($statuses)) $status = 'success';
 		else $status = 'failed';
 		$wpdb->update($tables['submissions'], ['status' => $status], ['id' => $submission_id], ['%s'], ['%d']);
 	}
@@ -302,13 +302,15 @@ final class Repositories
 		$table = Database::tables()['deliveries'];
 		$now = current_time('mysql');
 		$row = $wpdb->get_row($wpdb->prepare(
-			"SELECT SUM(status = 'queued') AS queued, SUM(status = 'processing') AS processing, SUM(status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= %s)) AS due FROM {$table}",
+			"SELECT SUM(status = 'queued') AS queued, SUM(status = 'processing') AS processing, SUM(status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= %s)) AS due, MIN(CASE WHEN status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= %s) THEN COALESCE(next_attempt_at, created_at) ELSE NULL END) AS oldest_due_at FROM {$table}",
+			$now,
 			$now
 		), ARRAY_A) ?: [];
 		return [
 			'queued' => (int) ($row['queued'] ?? 0),
 			'due' => (int) ($row['due'] ?? 0),
 			'processing' => (int) ($row['processing'] ?? 0),
+			'oldest_due_at' => (string) ($row['oldest_due_at'] ?? ''),
 		];
 	}
 
@@ -334,7 +336,7 @@ final class Repositories
 			$week
 		), ARRAY_A) ?: [];
 		$delivery_rows = $wpdb->get_results($wpdb->prepare(
-			"SELECT connector, SUM(updated_at >= %s AND status = 'success') AS success, SUM(updated_at >= %s AND status = 'failed') AS failed, SUM(updated_at >= %s AND status = 'queued') AS queued, SUM(updated_at >= %s AND status = 'processing') AS processing, MAX(CASE WHEN status = 'success' THEN updated_at ELSE NULL END) AS last_success FROM {$tables['deliveries']} GROUP BY connector",
+			"SELECT connector, SUM(updated_at >= %s AND status IN ('success','sent')) AS success, SUM(updated_at >= %s AND status = 'failed') AS failed, SUM(updated_at >= %s AND status = 'queued') AS queued, SUM(updated_at >= %s AND status = 'processing') AS processing, MAX(CASE WHEN status IN ('success','sent') THEN updated_at ELSE NULL END) AS last_success FROM {$tables['deliveries']} GROUP BY connector",
 			$today,
 			$today,
 			$today,

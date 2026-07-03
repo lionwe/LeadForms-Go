@@ -18,4 +18,6 @@ delete_option('leadforms_go_legacy_migrated');
 delete_option('leadforms_go_legacy_history_cursor');
 delete_option('leadforms_go_queue_lock');
 delete_option('leadforms_go_queue_last_run');
+delete_option('leadforms_go_queue_last_source');
+delete_option('leadforms_go_queue_fallback_last_run');
 delete_option('leadforms_go_queue_pending');

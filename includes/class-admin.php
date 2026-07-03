@@ -34,7 +34,7 @@ final class Admin
 		$style_version = @filemtime(LEADFORMS_GO_DIR . 'assets/admin.css') ?: LEADFORMS_GO_VERSION;
 		$script_version = @filemtime(LEADFORMS_GO_DIR . 'assets/admin.js') ?: LEADFORMS_GO_VERSION;
 		wp_enqueue_style('leadforms-go-admin', LEADFORMS_GO_URL . 'assets/admin.css', [], (string) $style_version);
-		wp_add_inline_style('leadforms-go-admin', '.leadforms-go-admin{width:auto;max-width:none}');
+		wp_add_inline_style('leadforms-go-admin', '.leadforms-go-admin{width:auto;max-width:none}.leadforms-go-admin .button .dashicons{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.125rem;width:1.125rem;height:1.125rem;font-size:1.125rem;line-height:1}.lfg-delivery-status.is-sent{background:#edfaef;color:#008a20}.lfg-attempt-dot.is-sent{background:#008a20}.lfg-editor-toolbar{display:flex;align-items:center;justify-content:space-between;margin:1rem 0}.lfg-editor-toolbar .button{display:inline-flex;align-items:center;gap:.375rem;min-height:2.5rem;line-height:1}.lfg-shortcode{white-space:nowrap}.lfg-shortcode code{display:block}.lfg-shortcode .dashicons{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.125rem}.lfg-form-saved-notice{margin:0 0 1rem}');
 		wp_enqueue_script('leadforms-go-admin', LEADFORMS_GO_URL . 'assets/admin.js', [], (string) $script_version, true);
 		wp_add_inline_script('leadforms-go-admin', 'window.leadFormsGoAdmin=' . wp_json_encode([
 			'ajaxUrl' => admin_url('admin-ajax.php'),
@@ -43,6 +43,7 @@ final class Admin
 			'confirmDelete' => __('Видалити цю форму?', 'leadforms-go'),
 			'requestFailed' => __('Не вдалося виконати запит.', 'leadforms-go'),
 			'copied' => __('Скопійовано', 'leadforms-go'),
+			'copyFailed' => __('Не вдалося скопіювати', 'leadforms-go'),
 			'builder' => [
 				'maxFields' => Form_Builder::MAX_FIELDS,
 				'maxFieldsMessage' => sprintf(__('У формі може бути не більше %d полів.', 'leadforms-go'), Form_Builder::MAX_FIELDS),
@@ -68,7 +69,11 @@ final class Admin
 		$queue = (new Delivery_Queue())->health();
 		echo '<div class="lfg-dashboard-header"><div><h2>' . esc_html__('LeadForms Go', 'leadforms-go') . '</h2><p>' . esc_html__('Короткий огляд форм, заявок та інтеграцій.', 'leadforms-go') . '</p></div><div class="lfg-dashboard-actions"><a class="button lfg-dashboard-button lfg-dashboard-button--secondary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Налаштування', 'leadforms-go') . '</a><a class="button button-primary lfg-dashboard-button lfg-dashboard-button--primary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-forms&new=1')) . '"><span class="lfg-button-icon" aria-hidden="true"></span>' . esc_html__('Додати форму', 'leadforms-go') . '</a></div></div>';
 		if (! $queue['healthy']) {
-			echo '<div class="notice notice-warning inline lfg-queue-warning"><p><strong>' . esc_html__('Черга доставки потребує уваги.', 'leadforms-go') . '</strong> ' . esc_html($queue['cron_disabled'] ? __('WP-Cron вимкнений. Налаштуйте системний cron для обробки заявок.', 'leadforms-go') : __('Є прострочені завдання, але обробник черги не запланований.', 'leadforms-go')) . '</p></div>';
+			if ($queue['cron_disabled']) $queue_warning = __('WP-Cron вимкнений. Серверний fallback обробить прострочені доставки під час наступних запитів, але для стабільної роботи налаштуйте системний cron.', 'leadforms-go');
+			elseif ($queue['cron_overdue']) $queue_warning = __('Cron-подія прострочена. Серверний fallback обробить чергу під час наступного WordPress-запиту.', 'leadforms-go');
+			elseif ($queue['cron_delayed']) $queue_warning = __('Наступний запуск WP-Cron запланований запізно відносно прострочених доставок.', 'leadforms-go');
+			else $queue_warning = __('Є прострочені доставки, але обробник WP-Cron не запланований.', 'leadforms-go');
+			echo '<div class="notice notice-warning inline lfg-queue-warning"><p><strong>' . esc_html__('Черга доставки потребує уваги.', 'leadforms-go') . '</strong> ' . esc_html($queue_warning) . '</p></div>';
 		}
 		echo '<div class="lfg-dashboard-stats">';
 		$cards = [
@@ -91,7 +96,11 @@ final class Admin
 			$last_success = $last_success_at ? sprintf(__('Остання доставка: %s тому', 'leadforms-go'), human_time_diff($last_success_at, current_time('timestamp'))) : __('Успішних доставок ще немає', 'leadforms-go');
 			printf('<article class="lfg-card lfg-integration-card"><div class="lfg-integration-card__heading"><h3>%s</h3><span class="lfg-status%s">%s</span></div><p>%s</p><div class="lfg-integration-metrics"><span><strong>%d</strong>%s</span><span class="is-error"><strong>%d</strong>%s</span><span><strong>%d</strong>%s</span></div></article>', esc_html($titles[$connector->key()] ?? ucfirst($connector->key())), $connector->is_enabled() && ! is_wp_error($valid) ? ' is-active' : '', esc_html($status), esc_html($last_success), (int) $activity['success'], esc_html__('успішно', 'leadforms-go'), (int) $activity['failed'], esc_html__('помилок', 'leadforms-go'), (int) $activity['queued'], esc_html__('у черзі', 'leadforms-go'));
 		}
-		echo '</div></div><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Стан черги', 'leadforms-go') . '</h2></div><div class="lfg-queue-card"><div><span>' . esc_html__('Очікують', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['queued']) . '</strong></div><div><span>' . esc_html__('Обробляються', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['processing']) . '</strong></div><div><span>' . esc_html__('Останній запуск', 'leadforms-go') . '</span><strong>' . esc_html($queue['last_run'] ? sprintf(__('%s тому', 'leadforms-go'), human_time_diff($queue['last_run'], time())) : __('Ще не запускався', 'leadforms-go')) . '</strong></div><div><span>' . esc_html__('Наступний запуск', 'leadforms-go') . '</span><strong>' . esc_html($queue['scheduled'] ? wp_date('d.m.Y H:i', (int) $queue['scheduled']) : '—') . '</strong></div></div></div>';
+		$last_source = $queue['last_source'] === 'fallback' ? __('fallback', 'leadforms-go') : __('WP-Cron', 'leadforms-go');
+		$last_run = $queue['last_run'] ? sprintf(__('%1$s тому · %2$s', 'leadforms-go'), human_time_diff($queue['last_run'], time()), $last_source) : __('Ще не запускався', 'leadforms-go');
+		$next_run = $queue['scheduled'] ? wp_date('d.m.Y H:i', (int) $queue['scheduled']) : '—';
+		if ($queue['cron_overdue']) $next_run .= ' · ' . __('прострочено', 'leadforms-go');
+		echo '</div></div><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Стан черги', 'leadforms-go') . '</h2></div><div class="lfg-queue-card"><div><span>' . esc_html__('Прострочені доставки', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['due']) . '</strong></div><div><span>' . esc_html__('Обробляються', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['processing']) . '</strong></div><div><span>' . esc_html__('Останній запуск', 'leadforms-go') . '</span><strong>' . esc_html($last_run) . '</strong></div><div><span>' . esc_html__('Наступний запуск', 'leadforms-go') . '</span><strong>' . esc_html($next_run) . '</strong></div></div></div>';
 		echo '<div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Останні заявки', 'leadforms-go') . '</h2><a href="' . esc_url(admin_url('admin.php?page=leadforms-go-history')) . '">' . esc_html__('Вся історія', 'leadforms-go') . '</a></div><div class="lfg-recent-submissions">';
 		$recent = Repositories::submissions(5);
 		if ($recent === []) {
@@ -113,6 +122,10 @@ final class Admin
 		$form = $id ? Repositories::form($id) : null;
 		$this->open($form ? __('Редагування форми', 'leadforms-go') : __('Форми', 'leadforms-go'));
 		if ($form || isset($_GET['new'])) {
+			echo '<div class="lfg-editor-toolbar"><a class="button" href="' . esc_url(admin_url('admin.php?page=leadforms-go-forms')) . '"><span class="dashicons dashicons-arrow-left-alt2" aria-hidden="true"></span>' . esc_html__('До списку форм', 'leadforms-go') . '</a></div>';
+			if (isset($_GET['updated']) && absint($_GET['updated']) === 1) {
+				echo '<div class="notice notice-success is-dismissible inline lfg-form-saved-notice"><p><strong>' . esc_html__('Форму успішно збережено.', 'leadforms-go') . '</strong></p></div>';
+			}
 			$mode = in_array($form['editor_mode'] ?? '', ['visual', 'code'], true) ? $form['editor_mode'] : ($form ? 'code' : 'visual');
 			$schema = json_decode((string) ($form['form_schema'] ?? ''), true);
 			$schema = is_array($schema) ? $schema : [];
@@ -401,6 +414,7 @@ final class Admin
 			'queued' => __('У черзі', 'leadforms-go'),
 			'processing' => __('Обробляється', 'leadforms-go'),
 			'success' => __('Успішно', 'leadforms-go'),
+			'sent' => __('Надіслано', 'leadforms-go'),
 			'failed' => __('Помилка', 'leadforms-go'),
 			'cancelled' => __('Скасовано', 'leadforms-go'),
 		][$status] ?? $status;

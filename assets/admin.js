@@ -202,13 +202,43 @@ class LeadFormsGoAdmin {
 	}
 
 	async copyShortcode(button) {
-		try {
-			await navigator.clipboard.writeText(button.dataset.lfgCopy);
-			const original = button.title;
-			button.title = this.config.copied;
-			button.classList.add('is-copied');
-			window.setTimeout(() => { button.title = original; button.classList.remove('is-copied'); }, 1500);
-		} catch { /* Clipboard access can be blocked by browser policy. */ }
+		const shortcode = button.dataset.lfgCopy || '';
+		const originalTitle = button.title;
+		let copied = this.copyWithSelection(shortcode);
+		if (!copied && navigator.clipboard?.writeText) {
+			try {
+				await navigator.clipboard.writeText(shortcode);
+				copied = true;
+			} catch { copied = false; }
+		}
+
+		const message = copied ? this.config.copied : this.config.copyFailed;
+		button.title = message;
+		button.setAttribute('aria-label', message);
+		button.classList.toggle('is-copied', copied);
+		button.classList.toggle('is-copy-error', !copied);
+		window.setTimeout(() => {
+			button.title = originalTitle;
+			button.setAttribute('aria-label', originalTitle);
+			button.classList.remove('is-copied', 'is-copy-error');
+		}, 1500);
+	}
+
+	copyWithSelection(value) {
+		if (!value || typeof document.execCommand !== 'function') return false;
+		const textarea = document.createElement('textarea');
+		textarea.value = value;
+		textarea.readOnly = true;
+		textarea.style.position = 'fixed';
+		textarea.style.opacity = '0';
+		textarea.style.pointerEvents = 'none';
+		document.body.append(textarea);
+		textarea.select();
+		textarea.setSelectionRange(0, textarea.value.length);
+		let copied = false;
+		try { copied = document.execCommand('copy'); } catch { copied = false; }
+		textarea.remove();
+		return copied;
 	}
 
 	async testConnector(button) {

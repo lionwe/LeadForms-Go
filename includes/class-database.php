@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.3.2';
+	private const SCHEMA_VERSION = '1.3.3';
 
 	public static function tables(): array
 	{
