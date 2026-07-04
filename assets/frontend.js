@@ -126,6 +126,7 @@ class LeadForm {
 		this.form = root.querySelector('form');
 		this.status = root.querySelector('.leadforms-go-form__status');
 		this.config = config;
+		this.startedAt = Date.now();
 		if (!this.form) return;
 		this.validator = new FormValidator(this.form, config.messages);
 		this.form.querySelectorAll('input[data-mask]').forEach((input) => new PhoneMask(input));
@@ -174,6 +175,7 @@ class LeadForm {
 			const value = current || this.storageGet(key);
 			if (value) payload[key] = value;
 		});
+		payload._lfg_started_at = String(this.startedAt);
 		const formId = this.root.dataset.leadformsGoForm || this.root.id.replace('leadforms-go-form-', '');
 		return new URLSearchParams({ action: 'leadforms_go_submit', nonce: this.config.nonce, form_id: formId, form_data: JSON.stringify(payload) });
 	}

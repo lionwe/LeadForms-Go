@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.5
+
+- Added a supported API for storing application-created submissions in the delivery queue.
+- Added a submission-data filter for project-specific attribution fields.
+- Added honeypot and minimum-fill-time checks for public forms.
+- Strengthened server-side validation for Ukrainian phone numbers and name fields.
+
 ## 1.3.4
 
 - Вирівняно Dashicons відносно тексту в кнопках плагіна.

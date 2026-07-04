@@ -55,10 +55,15 @@ final class Plugin
 				$form_code = Form_Builder::render($schema, (string) ($form['submit_label'] ?? 'Надіслати'), $instance_key);
 			}
 		}
+		$this->enqueue_frontend();
+		return sprintf('<div id="leadforms-go-form-%1$s" class="leadforms-go-form reintegration-form" data-leadforms-go-form="%2$d">%3$s<div class="leadforms-go-form__status" role="status" aria-live="polite"></div></div>', esc_attr($instance_key), (int) $form['id'], $form_code);
+	}
+
+	public function enqueue_frontend(): void
+	{
 		wp_enqueue_script('leadforms-go');
 		wp_enqueue_style('leadforms-go');
 		$this->configure_frontend();
-		return sprintf('<div id="leadforms-go-form-%1$s" class="leadforms-go-form reintegration-form" data-leadforms-go-form="%2$d">%3$s<div class="leadforms-go-form__status" role="status" aria-live="polite"></div></div>', esc_attr($instance_key), (int) $form['id'], $form_code);
 	}
 
 	private function configure_frontend(): void
@@ -94,6 +99,11 @@ final class Plugin
 		if ($raw === '' || strlen($raw) > 20480) wp_send_json_error(['message' => __('Некоректні дані форми.', 'leadforms-go')], 400);
 		$decoded = json_decode($raw, true);
 		if (! is_array($decoded) || count($decoded) > 50) wp_send_json_error(['message' => __('Некоректні дані форми.', 'leadforms-go')], 400);
+		$honeypot = isset($decoded['website']) && is_scalar($decoded['website']) ? trim((string) $decoded['website']) : '';
+		$started_at = isset($decoded['_lfg_started_at']) ? absint($decoded['_lfg_started_at']) : 0;
+		$elapsed = $started_at > 0 ? ((int) round(microtime(true) * 1000) - $started_at) : 0;
+		if ($honeypot !== '' || $elapsed < 1500) wp_send_json_error(['message' => __('Некоректні дані форми.', 'leadforms-go')], 400);
+		unset($decoded['website'], $decoded['_lfg_started_at']);
 		$validation = Submission_Validator::validate($form, $decoded);
 		$data = $validation['data'];
 		$errors = $validation['errors'];
@@ -101,6 +111,8 @@ final class Plugin
 		if ($data === []) wp_send_json_error(['message' => __('Дані форми відсутні.', 'leadforms-go')], 422);
 		if (! $this->consume_rate_limit($form_id)) wp_send_json_error(['message' => __('Забагато спроб. Спробуйте пізніше.', 'leadforms-go')], 429);
 		$referer = wp_get_referer() ?: '';
+		$data = apply_filters('leadforms_go_submission_data', $data, $form_id, $referer);
+		if (! is_array($data) || $data === []) wp_send_json_error(['message' => __('Дані форми відсутні.', 'leadforms-go')], 422);
 		$submission_id = Repositories::create_submission($form_id, $data, $referer);
 		if ($submission_id <= 0) wp_send_json_error(['message' => __('Не вдалося зберегти заявку. Спробуйте ще раз.', 'leadforms-go')], 500);
 		$delivery_count = $this->queue?->queue_submission($submission_id) ?? 0;
@@ -113,6 +125,17 @@ final class Plugin
 		}
 		do_action('leadforms_go_submission_processed', $submission_id, $data, $referer);
 		wp_send_json_success(['message' => __('Дякуємо! Форму успішно відправлено.', 'leadforms-go'), 'submission_id' => $submission_id, 'deliveries' => $delivery_count]);
+	}
+
+	public function capture_submission(array $data, ?int $form_id = null, string $referer = ''): int
+	{
+		$data = apply_filters('leadforms_go_submission_data', $data, $form_id, $referer);
+		if (! is_array($data) || $data === []) return 0;
+		$submission_id = Repositories::create_submission($form_id, $data, $referer);
+		if ($submission_id <= 0) return 0;
+		$this->queue?->queue_submission($submission_id);
+		do_action('leadforms_go_submission_processed', $submission_id, $data, $referer);
+		return $submission_id;
 	}
 
 	private function consume_rate_limit(int $form_id): bool

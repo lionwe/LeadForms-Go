@@ -64,6 +64,9 @@ final class Submission_Validator
 			$value = trim((string) $raw_value);
 			$type = preg_match('/phone|tel|телефон|номер/iu', $key) === 1 ? 'tel' : (preg_match('/e-?mail|пошт/iu', $key) === 1 ? 'email' : 'text');
 			$error = self::value_error($value, $type, $type === 'text' ? 1000 : null);
+			if ($error === '' && self::is_name_field($key) && preg_match('/^[\p{L}\s\-\'’ʼ]+$/u', $value) !== 1) {
+				$error = __('Ім’я може містити лише літери, пробіли, дефіс та апостроф.', 'leadforms-go');
+			}
 			if ($error !== '') {
 				$errors[$key] = $error;
 				continue;
@@ -95,8 +98,18 @@ final class Submission_Validator
 		$length = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
 		if ($length > $maximum) return sprintf(__('Максимальна довжина — %d символів.', 'leadforms-go'), $maximum);
 		if (preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}\x{200D}]/u', $value) === 1) return __('Смайлики використовувати не можна.', 'leadforms-go');
-		if ($type === 'tel' && strlen((string) preg_replace('/\D+/', '', $value)) < 12) return __('Введіть коректний номер телефону — мінімум 12 цифр.', 'leadforms-go');
+		if ($type === 'tel') {
+			$digits = (string) preg_replace('/\D+/', '', $value);
+			if (strlen($digits) !== 12 || ! str_starts_with($digits, '380')) return __('Введіть коректний український номер телефону.', 'leadforms-go');
+		}
 		if ($type === 'email' && ! is_email($value)) return __('Введіть коректну електронну адресу.', 'leadforms-go');
 		return '';
+	}
+
+	private static function is_name_field(string $key): bool
+	{
+		$normalized = function_exists('mb_strtolower') ? mb_strtolower($key, 'UTF-8') : strtolower($key);
+		$normalized = str_replace(["'", '’', 'ʼ', '`', '"'], '', $normalized);
+		return preg_match('/(^|[_\s-])(first_?name|last_?name|surname|name|імя|прізвище)($|[_\s-])/iu', $normalized) === 1;
 	}
 }
