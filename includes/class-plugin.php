@@ -66,9 +66,7 @@ final class Plugin
 			}
 		}
 		$this->enqueue_frontend();
-		$messages = wp_json_encode($translation['messages'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-		$security = Submission_Security::context((int) $form['id']);
-		return sprintf('<div id="leadforms-go-form-%1$s" class="leadforms-go-form reintegration-form" data-leadforms-go-form="%2$d" data-leadforms-go-locale="%3$s" data-leadforms-go-messages="%4$s" data-leadforms-go-nonce="%5$s" data-leadforms-go-token="%6$s">%7$s<div class="leadforms-go-form__status" role="status" aria-live="polite"></div></div>', esc_attr($instance_key), (int) $form['id'], esc_attr($locale), esc_attr(is_string($messages) ? $messages : '{}'), esc_attr($security['nonce']), esc_attr($security['token']), $form_code);
+		return sprintf('<div id="leadforms-go-form-%1$s" class="leadforms-go-form reintegration-form" data-leadforms-go-form="%2$d">%3$s<div class="leadforms-go-form__status" role="status" aria-live="polite"></div></div>', esc_attr($instance_key), (int) $form['id'], $form_code);
 	}
 
 	public function enqueue_frontend(): void
@@ -76,6 +74,9 @@ final class Plugin
 		wp_enqueue_script('leadforms-go');
 		wp_enqueue_style('leadforms-go');
 		$this->configure_frontend();
+		$messages = wp_json_encode($translation['messages'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+		$security = Submission_Security::context((int) $form['id']);
+		return sprintf('<div id="leadforms-go-form-%1$s" class="leadforms-go-form reintegration-form" data-leadforms-go-form="%2$d" data-leadforms-go-locale="%3$s" data-leadforms-go-messages="%4$s" data-leadforms-go-nonce="%5$s" data-leadforms-go-token="%6$s">%7$s<div class="leadforms-go-form__status" role="status" aria-live="polite"></div></div>', esc_attr($instance_key), (int) $form['id'], esc_attr($locale), esc_attr(is_string($messages) ? $messages : '{}'), esc_attr($security['nonce']), esc_attr($security['token']), $form_code);
 	}
 
 	private function configure_frontend(): void
