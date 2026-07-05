@@ -1,1 +1,2 @@
 .leadforms-go-form__status:empty{display:none}
+.leadforms-go-form__honeypot{position:absolute!important;left:-10000rem!important;width:.0625rem!important;height:.0625rem!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}

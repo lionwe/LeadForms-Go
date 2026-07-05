@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.3.3';
+	private const SCHEMA_VERSION = '1.4.3';
 
 	public static function tables(): array
 	{
@@ -16,6 +16,7 @@ final class Database
 			'submissions' => $wpdb->prefix . 'leadforms_go_submissions',
 			'deliveries' => $wpdb->prefix . 'leadforms_go_deliveries',
 			'attempts' => $wpdb->prefix . 'leadforms_go_delivery_attempts',
+			'rate_limits' => $wpdb->prefix . 'leadforms_go_rate_limits',
 		];
 	}
 
@@ -31,6 +32,7 @@ final class Database
 			self::install();
 		}
 		if (! get_option('leadforms_go_legacy_migrated')) self::migrate_legacy();
+		self::grant_capabilities();
 	}
 
 	private static function install(): void
@@ -47,6 +49,9 @@ final class Database
 			editor_mode varchar(20) NOT NULL DEFAULT 'code',
 			form_schema longtext NOT NULL,
 			submit_label varchar(120) NOT NULL DEFAULT 'Надіслати',
+			default_locale varchar(20) NOT NULL DEFAULT 'uk_UA',
+			translations longtext NOT NULL,
+			active tinyint(1) unsigned NOT NULL DEFAULT 1,
 			legacy_id bigint(20) unsigned DEFAULT NULL,
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
@@ -59,11 +64,15 @@ final class Database
 			legacy_id bigint(20) unsigned DEFAULT NULL,
 			payload longtext NOT NULL,
 			referer text NOT NULL,
+			locale varchar(20) NOT NULL DEFAULT 'uk_UA',
+			request_id varchar(64) DEFAULT NULL,
 			status varchar(20) NOT NULL DEFAULT 'pending',
 			created_at datetime NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY legacy_id (legacy_id),
 			KEY form_id (form_id),
+			KEY locale (locale),
+			UNIQUE KEY request_id (request_id),
 			KEY status_created (status,created_at),
 			KEY created_at (created_at)
 		) $collate;");
@@ -100,10 +109,54 @@ final class Database
 			PRIMARY KEY  (id),
 			UNIQUE KEY delivery_attempt (delivery_id,attempt_number)
 		) $collate;");
+		dbDelta("CREATE TABLE {$tables['rate_limits']} (
+			key_hash char(64) NOT NULL,
+			attempts int(10) unsigned NOT NULL DEFAULT 1,
+			expires_at datetime NOT NULL,
+			PRIMARY KEY  (key_hash),
+			KEY expires_at (expires_at)
+		) $collate;");
+		self::migrate_form_translations();
+		self::grant_capabilities();
 		update_option('leadforms_go_schema_version', self::SCHEMA_VERSION, false);
 		$queued = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$tables['deliveries']} WHERE status = 'queued'"); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		if ($queued > 0) update_option('leadforms_go_queue_pending', 1, false);
 		else delete_option('leadforms_go_queue_pending');
+	}
+
+	private static function grant_capabilities(): void
+	{
+		$role = get_role('administrator');
+		if ($role && ! $role->has_cap('leadforms_go_view_submissions')) $role->add_cap('leadforms_go_view_submissions');
+	}
+
+	private static function migrate_form_translations(): void
+	{
+		global $wpdb;
+		$table = self::tables()['forms'];
+		if (! self::table_exists($table)) return;
+		$rows = $wpdb->get_results("SELECT id, editor_mode, form_schema, submit_label, default_locale, translations FROM {$table}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		foreach ($rows ?: [] as $row) {
+			$schema = json_decode((string) $row['form_schema'], true);
+			$schema = Form_Builder::sanitize_schema(is_array($schema) ? $schema : []);
+			$locale = Form_Translations::normalize_locale((string) $row['default_locale']) ?: Form_Translations::DEFAULT_LOCALE;
+			$translations = json_decode((string) $row['translations'], true);
+			$translations = Form_Translations::sanitize(is_array($translations) ? $translations : []);
+			if ($schema !== []) $translations = Form_Translations::complete($translations, $schema);
+			$data = [
+				'default_locale' => $locale,
+				'translations' => (string) wp_json_encode($translations, JSON_UNESCAPED_UNICODE),
+			];
+			$formats = ['%s', '%s'];
+			if (($row['editor_mode'] ?? '') === 'visual' && $schema !== []) {
+				$resolved = Form_Translations::resolve($translations, $locale, $locale);
+				$data['form_schema'] = (string) wp_json_encode($schema, JSON_UNESCAPED_UNICODE);
+				$data['code'] = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), (string) $resolved['submit_label']);
+				$formats[] = '%s';
+				$formats[] = '%s';
+			}
+			$wpdb->update($table, $data, ['id' => (int) $row['id']], $formats, ['%d']);
+		}
 	}
 
 	private static function migrate_legacy(): void
@@ -121,7 +174,7 @@ final class Database
 			$rows = $wpdb->get_results("SELECT id, name, code FROM {$legacy_forms}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			foreach ($rows as $row) {
 				$wpdb->query($wpdb->prepare(
-					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, %d, %s, %s)",
+					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, default_locale, translations, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, 'uk_UA', '{}', %d, %s, %s)",
 					(string) $row['name'], Form_Builder::sanitize_code((string) $row['code']), __('Надіслати', 'leadforms-go'), (int) $row['id'], current_time('mysql'), current_time('mysql')
 				));
 			}

@@ -35,8 +35,9 @@ final class Form_Builder
 			if (! in_array($type, $allowed_types, true)) $type = 'text';
 			$name = sanitize_text_field((string) ($field['name'] ?? ''));
 			$label = sanitize_text_field((string) ($field['label'] ?? $name));
-			if ($name === '' || $label === '') continue;
+			if ($name === '' && $label === '') continue;
 			$key = sanitize_key((string) ($field['key'] ?? ''));
+			if ($key === '') $key = sanitize_key((string) ($field['id'] ?? ''));
 			if ($key === '') {
 				foreach ($tiles as $tile_key => $tile) {
 					if ($tile['type'] === $type && $tile['name'] === $name) {
@@ -45,16 +46,16 @@ final class Form_Builder
 					}
 				}
 			}
-			$key = $key ?: $type;
-			$key = str_replace('_', '-', $key ?: $type);
+			$key = str_replace('-', '_', $key ?: $type);
 			$key_counts[$key] = ($key_counts[$key] ?? 0) + 1;
-			$id = $key . ($key_counts[$key] > 1 ? '-' . $key_counts[$key] : '');
+			if ($key_counts[$key] > 1) $key .= '_' . $key_counts[$key];
+			$id = str_replace('_', '-', $key);
 			$clean[] = [
 				'id' => sanitize_html_class($id),
 				'key' => $key,
 				'type' => $type,
 				'label' => $label,
-				'name' => $name,
+				'name' => $key,
 				'placeholder' => sanitize_text_field((string) ($field['placeholder'] ?? '')),
 				'required' => ! empty($field['required']),
 				'mask' => $type === 'tel' ? sanitize_text_field((string) ($field['mask'] ?? '')) : '',
@@ -68,7 +69,7 @@ final class Form_Builder
 		$seen = [];
 		$duplicates = [];
 		foreach ($schema as $field) {
-			$name = isset($field['name']) ? (string) $field['name'] : '';
+			$name = isset($field['key']) ? (string) $field['key'] : '';
 			if ($name === '') continue;
 			if (isset($seen[$name])) $duplicates[$name] = $name;
 			$seen[$name] = true;
@@ -81,19 +82,28 @@ final class Form_Builder
 		return wp_kses($code, self::allowed_html());
 	}
 
+	public static function secure_transport(string $code): string
+	{
+		$result = preg_replace_callback('/<form\b([^>]*)>/i', static function (array $matches): string {
+			$attributes = preg_replace('/\s+(?:action|method)\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', (string) $matches[1]);
+			return '<form' . ($attributes ?: '') . ' method="post" action="">';
+		}, $code);
+		return is_string($result) ? $result : $code;
+	}
+
 	public static function render(array $schema, string $submit_label, string $instance = ''): string
 	{
 		$submit_label = sanitize_text_field($submit_label) ?: __('Надіслати', 'leadforms-go');
 		$instance = sanitize_html_class($instance);
 		$id_prefix = $instance === '' ? 'lfg-' : 'lfg-' . $instance . '-';
-		$lines = ['<form>'];
+		$lines = ['<form method="post" action="">'];
 		foreach ($schema as $field) {
 			$id = $id_prefix . sanitize_html_class($field['id']);
 			$required = $field['required'] ? ' required' : '';
 			$required_mark = $field['required'] ? '*' : '';
 			if ($field['type'] === 'checkbox') {
 				$lines[] = '  <label class="leadforms-go-checkbox" for="' . esc_attr($id) . '">';
-				$lines[] = '    <input id="' . esc_attr($id) . '" type="checkbox" name="' . esc_attr($field['name']) . '" value="Так"' . $required . '>';
+				$lines[] = '    <input id="' . esc_attr($id) . '" type="checkbox" name="' . esc_attr($field['key']) . '" value="1"' . $required . '>';
 				$lines[] = '    <span class="leadforms-go-checkbox__label">' . esc_html($field['label'] . $required_mark) . '</span>';
 				$lines[] = '  </label>';
 				continue;
@@ -101,10 +111,10 @@ final class Form_Builder
 			$lines[] = '  <label for="' . esc_attr($id) . '">';
 			$lines[] = '    <span>' . esc_html($field['label'] . $required_mark) . '</span>';
 			if ($field['type'] === 'textarea') {
-				$lines[] = '    <textarea id="' . esc_attr($id) . '" name="' . esc_attr($field['name']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $required . '></textarea>';
+				$lines[] = '    <textarea id="' . esc_attr($id) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $required . '></textarea>';
 			} else {
 				$mask = $field['type'] === 'tel' && $field['mask'] !== '' ? ' data-mask="' . esc_attr($field['mask']) . '" data-min-length="12"' : '';
-				$lines[] = '    <input id="' . esc_attr($id) . '" type="' . esc_attr($field['type']) . '" name="' . esc_attr($field['name']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $mask . $required . '>';
+				$lines[] = '    <input id="' . esc_attr($id) . '" type="' . esc_attr($field['type']) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $mask . $required . '>';
 			}
 			$lines[] = '  </label>';
 		}

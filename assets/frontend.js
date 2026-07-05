@@ -125,13 +125,36 @@ class LeadForm {
 		this.root = root;
 		this.form = root.querySelector('form');
 		this.status = root.querySelector('.leadforms-go-form__status');
-		this.config = config;
-		this.startedAt = Date.now();
+		this.config = { ...config, messages: { ...config.messages, ...this.parseMessages() } };
 		if (!this.form) return;
-		this.validator = new FormValidator(this.form, config.messages);
+		this.requestId = this.createRequestId();
+		this.addHoneypot();
+		this.validator = new FormValidator(this.form, this.config.messages);
 		this.form.querySelectorAll('input[data-mask]').forEach((input) => new PhoneMask(input));
 		this.form.noValidate = true;
 		this.form.addEventListener('submit', (event) => this.submit(event), true);
+	}
+
+	createRequestId() {
+		if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+		const bytes = new Uint8Array(24);
+		window.crypto?.getRandomValues?.(bytes);
+		return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('') || `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+	}
+
+	addHoneypot() {
+		if (this.form.elements.namedItem('_lfg_website')) return;
+		const input = document.createElement('input');
+		input.type = 'text'; input.name = '_lfg_website'; input.className = 'leadforms-go-form__honeypot';
+		input.tabIndex = -1; input.autocomplete = 'off'; input.setAttribute('aria-hidden', 'true');
+		this.form.append(input);
+	}
+
+	parseMessages() {
+		try {
+			const messages = JSON.parse(this.root.dataset.leadformsGoMessages || '{}');
+			return messages && typeof messages === 'object' ? messages : {};
+		} catch { return {}; }
 	}
 
 	async submit(event) {
@@ -154,6 +177,7 @@ class LeadForm {
 			}
 			this.validator.clear();
 			this.form.reset();
+			this.requestId = this.createRequestId();
 			this.showSuccess(result.data.message || this.config.messages.success);
 			document.dispatchEvent(new CustomEvent('leadFormsGoSubmitted', { detail: { form: this.form, data: result } }));
 			document.dispatchEvent(new CustomEvent('reintegrationFormSubmitted', { detail: { form: this.form, data: result } }));
@@ -177,15 +201,24 @@ class LeadForm {
 		});
 		payload._lfg_started_at = String(this.startedAt);
 		const formId = this.root.dataset.leadformsGoForm || this.root.id.replace('leadforms-go-form-', '');
-		return new URLSearchParams({ action: 'leadforms_go_submit', nonce: this.config.nonce, form_id: formId, form_data: JSON.stringify(payload) });
+		return new URLSearchParams({ action: 'leadforms_go_submit', nonce: this.root.dataset.leadformsGoNonce || '', form_token: this.root.dataset.leadformsGoToken || '', request_id: this.requestId, form_id: formId, locale: this.root.dataset.leadformsGoLocale || '', form_data: JSON.stringify(payload) });
 	}
 
 	storageGet(key) {
-		try { return window.localStorage.getItem(key); } catch { return null; }
+		try {
+			const raw = window.localStorage.getItem(key);
+			if (!raw) return null;
+			const stored = JSON.parse(raw);
+			if (!stored?.value || Number(stored.expiresAt) <= Date.now()) { window.localStorage.removeItem(key); return null; }
+			return String(stored.value);
+		} catch { try { window.localStorage.removeItem(key); } catch { /* Storage can be blocked. */ } return null; }
 	}
 
 	storageSet(key, value) {
-		try { window.localStorage.setItem(key, value); } catch { /* Storage can be blocked by browser privacy settings. */ }
+		try {
+			const ttl = Math.max(0, Number(this.config.attributionTtl) || 0) * 1000;
+			if (ttl > 0) window.localStorage.setItem(key, JSON.stringify({ value, expiresAt: Date.now() + ttl }));
+		} catch { /* Storage can be blocked by browser privacy settings. */ }
 	}
 
 	setSubmitting(button, text, submitting, original = '') {
