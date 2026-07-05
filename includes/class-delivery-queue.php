@@ -17,6 +17,7 @@ final class Delivery_Queue
 	private const FALLBACK_GRACE = 15;
 	private const CRON_TOLERANCE = MINUTE_IN_SECONDS;
 	private bool $pending = false;
+	private bool $queued_in_request = false;
 
 	public function boot(): void
 	{
@@ -29,6 +30,7 @@ final class Delivery_Queue
 	public static function deactivate(): void
 	{
 		wp_clear_scheduled_hook(self::HOOK);
+		wp_clear_scheduled_hook('leadforms_go_cleanup_submissions');
 		delete_option(self::LOCK_OPTION);
 	}
 
@@ -47,6 +49,7 @@ final class Delivery_Queue
 		}
 		update_option(self::PENDING_OPTION, 1, false);
 		$this->pending = true;
+		$this->queued_in_request = true;
 		Repositories::sync_submission_status($submission_id);
 		$this->schedule(true);
 		return $count;
@@ -73,8 +76,11 @@ final class Delivery_Queue
 					Repositories::cancel_delivery($delivery_id, __('Дані заявки пошкоджені.', 'leadforms-go'));
 					continue;
 				}
+				$connector_payload = $key === 'telegram'
+					? Submission_Presenter::for_telegram($payload, (int) $delivery['form_id'], (string) ($delivery['locale'] ?? ''))
+					: $payload;
 				try {
-					$result = $connectors[$key]->send($payload, (string) $delivery['referer']);
+					$result = $connectors[$key]->send($connector_payload, (string) $delivery['referer']);
 				} catch (\Throwable) {
 					$result = new Result(false, 0, __('Під час доставки сталася внутрішня помилка.', 'leadforms-go'), true);
 				}
@@ -112,8 +118,10 @@ final class Delivery_Queue
 		if ($summary['due'] < 1 || $summary['processing'] > 0) return;
 
 		$oldest_due = $this->database_time_to_timestamp((string) $summary['oldest_due_at']);
-		if ($oldest_due === null || $oldest_due > time() - self::FALLBACK_GRACE) return;
+		$grace = $this->queued_in_request ? 0 : self::FALLBACK_GRACE;
+		if ($oldest_due === null || $oldest_due > time() - $grace) return;
 
+		if ($this->queued_in_request && function_exists('fastcgi_finish_request')) fastcgi_finish_request();
 		$this->process('fallback');
 	}
 

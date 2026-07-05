@@ -7,13 +7,20 @@ namespace LeadFormsGo;
 final class Settings
 {
 	private const OPTION = 'leadforms_go_settings';
+	private const ENCRYPTED_PREFIX = 'lfg:v1:';
 	private static ?array $cache = null;
 
 	public static function all(): array
 	{
 		if (self::$cache !== null) return self::$cache;
 		$value = get_option(self::OPTION, []);
-		self::$cache = is_array($value) ? array_replace_recursive(self::defaults(), $value) : self::defaults();
+		$all = is_array($value) ? array_replace_recursive(self::defaults(), $value) : self::defaults();
+		$all['telegram']['token'] = self::constant_or_secret('LEADFORMS_GO_TELEGRAM_TOKEN', (string) $all['telegram']['token']);
+		$all['telegram']['chat_id'] = self::constant_or_value('LEADFORMS_GO_TELEGRAM_CHAT_ID', (string) $all['telegram']['chat_id']);
+		$all['crm']['token'] = self::constant_or_secret('LEADFORMS_GO_CRM_TOKEN', (string) $all['crm']['token']);
+		$all['crm']['partner_id'] = self::constant_or_value('LEADFORMS_GO_CRM_PARTNER_ID', (string) $all['crm']['partner_id']);
+		$all['crm']['adv_id'] = self::constant_or_value('LEADFORMS_GO_CRM_ADV_ID', (string) $all['crm']['adv_id']);
+		self::$cache = $all;
 		return self::$cache;
 	}
 
@@ -32,22 +39,41 @@ final class Settings
 		]);
 	}
 
+	public static function update_section(string $section, array $values): void
+	{
+		if (! in_array($section, ['general', 'telegram', 'sheets', 'crm'], true)) return;
+		$stored = get_option(self::OPTION, []);
+		$stored = is_array($stored) ? array_replace_recursive(self::defaults(), $stored) : self::defaults();
+		$stored[$section] = $values;
+		update_option(self::OPTION, self::sanitize($stored), false);
+		self::$cache = null;
+	}
+
 	public static function sanitize(mixed $input): array
 	{
 		$input = is_array($input) ? $input : [];
-		$current = self::all();
+		$stored = get_option(self::OPTION, []);
+		$stored = is_array($stored) ? array_replace_recursive(self::defaults(), $stored) : self::defaults();
 		$raw = static function (string $section, string $key) use ($input): string {
 			$value = $input[$section][$key] ?? '';
 			return is_scalar($value) ? trim(wp_unslash((string) $value)) : '';
 		};
 		$text = static fn (string $section, string $key): string => sanitize_text_field($raw($section, $key));
-		$secret = static function (string $section, string $key) use ($input, $current): string {
+		$secret = static function (string $section, string $key) use ($input, $stored): string {
 			$submitted = $input[$section][$key] ?? '';
 			$value = is_scalar($submitted) ? trim(wp_unslash((string) $submitted)) : '';
-			return $value === '' ? (string) ($current[$section][$key] ?? '') : sanitize_text_field($value);
+			if ($value === '') return (string) ($stored[$section][$key] ?? '');
+			$encrypted = self::encrypt_secret(sanitize_text_field($value));
+			if ($encrypted !== '') return $encrypted;
+			add_settings_error(self::OPTION, 'secret_encryption_failed', __('Секрет не оновлено: сервер не зміг безпечно зашифрувати значення.', 'leadforms-go'));
+			return (string) ($stored[$section][$key] ?? '');
 		};
 		return [
-			'general' => ['retain_data' => ! empty($input['general']['retain_data'])],
+			'general' => [
+				'retain_data' => ! empty($input['general']['retain_data']),
+				'retention_days' => min(3650, max(0, absint($input['general']['retention_days'] ?? 180))),
+				'attribution_days' => min(365, max(0, absint($input['general']['attribution_days'] ?? 30))),
+			],
 			'telegram' => [
 				'enabled' => ! empty($input['telegram']['enabled']),
 				'token' => $secret('telegram', 'token'),
@@ -55,7 +81,7 @@ final class Settings
 			],
 			'sheets' => [
 				'enabled' => ! empty($input['sheets']['enabled']),
-				'spreadsheet_id' => (string) preg_replace('/[^A-Za-z0-9_-]/', '', $text('sheets', 'spreadsheet_id')),
+				'spreadsheet_id' => self::spreadsheet_id($raw('sheets', 'spreadsheet_id')),
 				'sheet_name' => $text('sheets', 'sheet_name'),
 				'fields_order' => $text('sheets', 'fields_order'),
 			],
@@ -66,6 +92,55 @@ final class Settings
 				'adv_id' => $text('crm', 'adv_id'),
 			],
 		];
+	}
+
+	public static function maybe_encrypt_secrets(): void
+	{
+		$stored = get_option(self::OPTION, []);
+		if (! is_array($stored)) return;
+		$changed = false;
+		foreach ([['telegram', 'token', 'LEADFORMS_GO_TELEGRAM_TOKEN'], ['crm', 'token', 'LEADFORMS_GO_CRM_TOKEN']] as [$section, $key, $constant]) {
+			$value = (string) ($stored[$section][$key] ?? '');
+			if (defined($constant) && $value !== '') {
+				$stored[$section][$key] = '';
+				$changed = true;
+			} elseif ($value !== '' && ! str_starts_with($value, self::ENCRYPTED_PREFIX)) {
+				$encrypted = self::encrypt_secret($value);
+				if ($encrypted !== '') {
+					$stored[$section][$key] = $encrypted;
+					$changed = true;
+				}
+			}
+		}
+		if ($changed) update_option(self::OPTION, $stored, false);
+		self::$cache = null;
+	}
+
+	public static function encrypt_secret(string $value): string
+	{
+		if ($value === '' || str_starts_with($value, self::ENCRYPTED_PREFIX)) return $value;
+		if (! function_exists('openssl_encrypt')) return '';
+		try {
+			$iv = random_bytes(12);
+		} catch (\Throwable) {
+			return '';
+		}
+		$tag = '';
+		$encrypted = openssl_encrypt($value, 'aes-256-gcm', self::encryption_key(), OPENSSL_RAW_DATA, $iv, $tag);
+		if (! is_string($encrypted) || $tag === '') return '';
+		return self::ENCRYPTED_PREFIX . base64_encode($iv . $tag . $encrypted);
+	}
+
+	public static function decrypt_secret(string $value): string
+	{
+		if ($value === '' || ! str_starts_with($value, self::ENCRYPTED_PREFIX)) return $value;
+		if (! function_exists('openssl_decrypt')) return '';
+		$decoded = base64_decode(substr($value, strlen(self::ENCRYPTED_PREFIX)), true);
+		if (! is_string($decoded) || strlen($decoded) < 29) return '';
+		$iv = substr($decoded, 0, 12);
+		$tag = substr($decoded, 12, 16);
+		$plaintext = openssl_decrypt(substr($decoded, 28), 'aes-256-gcm', self::encryption_key(), OPENSSL_RAW_DATA, $iv, $tag);
+		return is_string($plaintext) ? $plaintext : '';
 	}
 
 	public static function import_legacy(string $section, array $legacy): void
@@ -80,16 +155,38 @@ final class Settings
 		}
 		$sanitized = self::sanitize($all);
 		update_option(self::OPTION, $sanitized, false);
-		self::$cache = $sanitized;
+		self::$cache = null;
 	}
 
 	private static function defaults(): array
 	{
 		return [
-			'general' => ['retain_data' => true],
+			'general' => ['retain_data' => true, 'retention_days' => 180, 'attribution_days' => 30],
 			'telegram' => ['enabled' => false, 'token' => '', 'chat_id' => ''],
 			'sheets' => ['enabled' => false, 'spreadsheet_id' => '', 'sheet_name' => 'Sheet1', 'fields_order' => ''],
 			'crm' => ['enabled' => false, 'partner_id' => '', 'token' => '', 'adv_id' => ''],
 		];
+	}
+
+	private static function constant_or_secret(string $name, string $stored): string
+	{
+		return defined($name) ? sanitize_text_field((string) constant($name)) : self::decrypt_secret($stored);
+	}
+
+	private static function constant_or_value(string $name, string $stored): string
+	{
+		return defined($name) ? sanitize_text_field((string) constant($name)) : $stored;
+	}
+
+	private static function encryption_key(): string
+	{
+		return hash_hmac('sha256', 'leadforms-go-settings', wp_salt('auth'), true);
+	}
+
+	private static function spreadsheet_id(string $value): string
+	{
+		$value = trim($value);
+		if (preg_match('~/(?:spreadsheets/)?(?:u/\d+/)?d/([A-Za-z0-9_-]+)~', $value, $match)) $value = $match[1];
+		return (string) preg_replace('/[^A-Za-z0-9_-]/', '', $value);
 	}
 }

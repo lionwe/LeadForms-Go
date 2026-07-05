@@ -1,0 +1,933 @@
+# Copyright (C) 2026 LeadForms Go
+# This file is distributed under the same license as the LeadForms Go package.
+msgid ""
+msgstr ""
+"Project-Id-Version: LeadForms Go\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-07-04 20:01+0000\n"
+"X-Poedit-Basepath: ..\n"
+"X-Poedit-KeywordsList: __;_e;_ex:1,2c;_n:1,2;_n_noop:1,2;_nx:1,2,4c;_nx_noop:1,2,3c;_x:1,2c;esc_attr__;esc_attr_e;esc_attr_x:1,2c;esc_html__;esc_html_e;esc_html_x:1,2c\n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Poedit-SearchPathExcluded-0: *.js\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: includes/class-admin.php:26, includes/class-admin.php:26, includes/class-admin.php:135
+msgid "Форми"
+msgstr ""
+
+#: includes/class-admin.php:27, includes/class-admin.php:27
+msgid "Історія"
+msgstr ""
+
+#: includes/class-admin.php:28, includes/class-admin.php:28, includes/class-admin.php:82, includes/class-admin.php:194
+msgid "Налаштування"
+msgstr ""
+
+#: includes/class-admin.php:42
+msgid "Перевірка…"
+msgstr ""
+
+#: includes/class-admin.php:43
+msgid "Видалити цю форму?"
+msgstr ""
+
+#: includes/class-admin.php:44
+msgid "Не вдалося виконати запит."
+msgstr ""
+
+#: includes/class-admin.php:45
+msgid "Скопійовано"
+msgstr ""
+
+#: includes/class-admin.php:46
+msgid "Не вдалося скопіювати"
+msgstr ""
+
+#: includes/class-admin.php:49
+msgid "У формі може бути не більше %d полів."
+msgstr ""
+
+#: includes/class-admin.php:50, includes/class-admin.php:66
+msgid "Обов’язкове поле"
+msgstr ""
+
+#: includes/class-admin.php:51
+msgid "Перемістити вище"
+msgstr ""
+
+#: includes/class-admin.php:52
+msgid "Перемістити нижче"
+msgstr ""
+
+#: includes/class-admin.php:53, includes/class-admin.php:174
+msgid "Видалити"
+msgstr ""
+
+#: includes/class-admin.php:54
+msgid "Додайте поля з бібліотеки ліворуч."
+msgstr ""
+
+#: includes/class-admin.php:55
+msgid "Підпис"
+msgstr ""
+
+#: includes/class-admin.php:56
+msgid "Текст, який бачить відвідувач біля поля."
+msgstr ""
+
+#: includes/class-admin.php:57
+msgid "Технічний ключ"
+msgstr ""
+
+#: includes/class-admin.php:58
+msgid "Незмінний ключ для Telegram, CRM, Sheets та історії."
+msgstr ""
+
+#: includes/class-admin.php:59
+msgid "Підказка в полі"
+msgstr ""
+
+#: includes/class-admin.php:60
+msgid "Текст усередині порожнього поля."
+msgstr ""
+
+#: includes/class-admin.php:61
+msgid "Замінити тексти цієї мови текстами з основної мови?"
+msgstr ""
+
+#: includes/class-admin.php:63
+msgid "Відправлення"
+msgstr ""
+
+#: includes/class-admin.php:64
+msgid "Успішне відправлення"
+msgstr ""
+
+#: includes/class-admin.php:65
+msgid "Помилка відправлення"
+msgstr ""
+
+#: includes/class-admin.php:67
+msgid "Некоректне значення"
+msgstr ""
+
+#: includes/class-admin.php:68
+msgid "Некоректний email"
+msgstr ""
+
+#: includes/class-admin.php:69
+msgid "Некоректний телефон"
+msgstr ""
+
+#: includes/class-admin.php:70
+msgid "Завелике значення"
+msgstr ""
+
+#: includes/class-admin.php:71
+msgid "Заборонені смайлики"
+msgstr ""
+
+#: includes/class-admin.php:79
+msgid "Огляд"
+msgstr ""
+
+#: includes/class-admin.php:82
+msgid "LeadForms Go"
+msgstr ""
+
+#: includes/class-admin.php:82
+msgid "Короткий огляд форм, заявок та інтеграцій."
+msgstr ""
+
+#: includes/class-admin.php:82, includes/class-admin.php:170
+msgid "Додати форму"
+msgstr ""
+
+#: includes/class-admin.php:87
+msgid "Є прострочені доставки, але обробник WP-Cron не запланований."
+msgstr ""
+
+#: includes/class-admin.php:86
+msgid "Наступний запуск WP-Cron запланований запізно відносно прострочених доставок."
+msgstr ""
+
+#: includes/class-admin.php:85
+msgid "Cron-подія прострочена. Серверний fallback обробить чергу під час наступного WordPress-запиту."
+msgstr ""
+
+#: includes/class-admin.php:84
+msgid "WP-Cron вимкнений. Серверний fallback обробить прострочені доставки під час наступних запитів, але для стабільної роботи налаштуйте системний cron."
+msgstr ""
+
+#: includes/class-admin.php:88
+msgid "Черга доставки потребує уваги."
+msgstr ""
+
+#: includes/class-admin.php:92
+msgid "Активні форми"
+msgstr ""
+
+#: includes/class-admin.php:93
+msgid "Заявки сьогодні"
+msgstr ""
+
+#: includes/class-admin.php:94, includes/class-admin.php:324, includes/class-admin.php:463
+msgid "У черзі"
+msgstr ""
+
+#: includes/class-admin.php:95
+msgid "Помилки сьогодні"
+msgstr ""
+
+#: includes/class-admin.php:96
+msgid "Успішна доставка"
+msgstr ""
+
+#: includes/class-admin.php:101
+msgid "Інтеграції"
+msgstr ""
+
+#: includes/class-admin.php:101
+msgid "Керувати"
+msgstr ""
+
+#: includes/class-admin.php:105
+msgid "Вимкнено"
+msgstr ""
+
+#: includes/class-admin.php:105
+msgid "Потрібне налаштування"
+msgstr ""
+
+#: includes/class-admin.php:105, includes/class-admin.php:203
+msgid "Увімкнено"
+msgstr ""
+
+#: includes/class-admin.php:108
+msgid "Остання доставка: %s тому"
+msgstr ""
+
+#: includes/class-admin.php:108
+msgid "Успішних доставок ще немає"
+msgstr ""
+
+#: includes/class-admin.php:109
+msgid "успішно"
+msgstr ""
+
+#: includes/class-admin.php:109
+msgid "помилок"
+msgstr ""
+
+#: includes/class-admin.php:109
+msgid "у черзі"
+msgstr ""
+
+#: includes/class-admin.php:111
+msgid "fallback"
+msgstr ""
+
+#: includes/class-admin.php:111
+msgid "WP-Cron"
+msgstr ""
+
+#: includes/class-admin.php:112
+msgid "%1$s тому · %2$s"
+msgstr ""
+
+#: includes/class-admin.php:112
+msgid "Ще не запускався"
+msgstr ""
+
+#: includes/class-admin.php:114
+msgid "прострочено"
+msgstr ""
+
+#: includes/class-admin.php:115
+msgid "Стан черги"
+msgstr ""
+
+#: includes/class-admin.php:115
+msgid "Прострочені доставки"
+msgstr ""
+
+#: includes/class-admin.php:115
+msgid "Обробляються"
+msgstr ""
+
+#: includes/class-admin.php:115
+msgid "Останній запуск"
+msgstr ""
+
+#: includes/class-admin.php:115
+msgid "Наступний запуск"
+msgstr ""
+
+#: includes/class-admin.php:116
+msgid "Останні заявки"
+msgstr ""
+
+#: includes/class-admin.php:116
+msgid "Вся історія"
+msgstr ""
+
+#: includes/class-admin.php:121
+msgid "Дата"
+msgstr ""
+
+#: includes/class-admin.php:121, includes/class-admin.php:329, includes/class-admin.php:370
+msgid "Статус"
+msgstr ""
+
+#: includes/class-admin.php:121, includes/class-admin.php:337, includes/class-admin.php:376, includes/class-privacy.php:40
+msgid "Джерело"
+msgstr ""
+
+#: includes/class-admin.php:119
+msgid "Заявок поки немає. Після першого надсилання вони з’являться тут."
+msgstr ""
+
+#: includes/class-admin.php:135
+msgid "Редагування форми"
+msgstr ""
+
+#: includes/class-admin.php:170
+msgid "Створюйте й керуйте формами без ручного написання HTML."
+msgstr ""
+
+#: includes/class-admin.php:170, includes/class-admin.php:327, includes/class-admin.php:370
+msgid "Форма"
+msgstr ""
+
+#: includes/class-admin.php:170
+msgid "Режим"
+msgstr ""
+
+#: includes/class-admin.php:170
+msgid "Шорткод"
+msgstr ""
+
+#: includes/class-admin.php:170
+msgid "Дії"
+msgstr ""
+
+#: includes/class-admin.php:174
+msgid "активна"
+msgstr ""
+
+#: includes/class-admin.php:174
+msgid "вимкнена"
+msgstr ""
+
+#: includes/class-admin.php:174, includes/class-admin.php:155
+msgid "Візуально"
+msgstr ""
+
+#: includes/class-admin.php:174, includes/class-admin.php:155
+msgid "Код"
+msgstr ""
+
+#: includes/class-admin.php:174
+msgid "Копіювати шорткод"
+msgstr ""
+
+#: includes/class-admin.php:174
+msgid "Редагувати"
+msgstr ""
+
+#: includes/class-admin.php:174
+msgid "Видалити форму"
+msgstr ""
+
+#: includes/class-admin.php:137
+msgid "До списку форм"
+msgstr ""
+
+#: includes/class-admin.php:139
+msgid "Форму успішно збережено."
+msgstr ""
+
+#: includes/class-admin.php:153
+msgid "Назва форми"
+msgstr ""
+
+#: includes/class-admin.php:153
+msgid "Використовується лише в адмінці, щоб швидко знайти потрібну форму."
+msgstr ""
+
+#: includes/class-admin.php:153
+msgid "Наприклад: Форма головного екрана"
+msgstr ""
+
+#: includes/class-admin.php:153
+msgid "Форма активна"
+msgstr ""
+
+#: includes/class-admin.php:153
+msgid "Вимкнена форма не відображається через shortcode і не приймає заявки."
+msgstr ""
+
+#: includes/class-admin.php:155
+msgid "Режим редактора"
+msgstr ""
+
+#: includes/class-admin.php:156
+msgid "Мова форми"
+msgstr ""
+
+#: includes/class-admin.php:156
+msgid "Структура спільна для всіх мов. Тут змінюються лише тексти."
+msgstr ""
+
+#: includes/class-admin.php:158
+msgid "Основна мова"
+msgstr ""
+
+#: includes/class-admin.php:160
+msgid "Скопіювати тексти з основної мови"
+msgstr ""
+
+#: includes/class-admin.php:161
+msgid "Готові поля"
+msgstr ""
+
+#: includes/class-admin.php:161
+msgid "Натисніть на плитку, щоб додати поле."
+msgstr ""
+
+#: includes/class-admin.php:165
+msgid "Поля форми"
+msgstr ""
+
+#: includes/class-admin.php:165
+msgid "Текст кнопки"
+msgstr ""
+
+#: includes/class-admin.php:165
+msgid "Повідомлення форми"
+msgstr ""
+
+#: includes/class-admin.php:165
+msgid "Попередній перегляд"
+msgstr ""
+
+#: includes/class-admin.php:166
+msgid "HTML-код форми"
+msgstr ""
+
+#: includes/class-admin.php:166
+msgid "Код відформатовано для читання. Якщо змінити його вручну й зберегти форму в режимі «Код», візуальна схема більше не використовуватиметься."
+msgstr ""
+
+#: includes/class-admin.php:167
+msgid "Зберегти форму"
+msgstr ""
+
+#: includes/class-admin.php:183
+msgid "Історія заявок"
+msgstr ""
+
+#: includes/class-admin.php:196
+msgid "Зберігання даних"
+msgstr ""
+
+#: includes/class-admin.php:196
+msgid "Зберігати форми та заявки після видалення плагіна"
+msgstr ""
+
+#: includes/class-admin.php:196
+msgid "Строк зберігання заявок, днів"
+msgstr ""
+
+#: includes/class-admin.php:196
+msgid "0 — не видаляти автоматично."
+msgstr ""
+
+#: includes/class-admin.php:196
+msgid "Строк зберігання UTM у браузері, днів"
+msgstr ""
+
+#: includes/class-admin.php:207
+msgid "Збережено — залиште порожнім, щоб не змінювати"
+msgstr ""
+
+#: includes/class-admin.php:209
+msgid "Перевірити підключення"
+msgstr ""
+
+#: includes/class-admin.php:211
+msgid "Не налаштовано"
+msgstr ""
+
+#: includes/class-admin.php:215
+msgid "Файл доступний: %s"
+msgstr ""
+
+#: includes/class-admin.php:216
+msgid "Файл недоступний для читання"
+msgstr ""
+
+#: includes/class-admin.php:218
+msgid "Сервісний обліковий запис Google"
+msgstr ""
+
+#: includes/class-admin.php:219
+msgid "Зберегти налаштування"
+msgstr ""
+
+#: includes/class-admin.php:229, includes/class-database.php:179, includes/class-form-builder.php:96
+msgid "Надіслати"
+msgstr ""
+
+#: includes/class-admin.php:237
+msgid "Додайте щонайменше одне поле до форми."
+msgstr ""
+
+#: includes/class-admin.php:239
+msgid "Назви полів мають бути унікальними. Повторюються: %s"
+msgstr ""
+
+#: includes/class-admin.php:247
+msgid "Вкажіть назву та вміст форми."
+msgstr ""
+
+#: includes/class-admin.php:248
+msgid "Форму не знайдено."
+msgstr ""
+
+#: includes/class-admin.php:250
+msgid "Не вдалося зберегти форму."
+msgstr ""
+
+#: includes/class-admin.php:256, includes/class-admin.php:474
+msgid "Недостатньо прав."
+msgstr ""
+
+#: includes/class-admin.php:257, includes/class-plugin.php:107
+msgid "Некоректний метод запиту."
+msgstr ""
+
+#: includes/class-admin.php:269
+msgid "Невідома інтеграція."
+msgstr ""
+
+#: includes/class-admin.php:273
+msgid "Під час перевірки сталася внутрішня помилка."
+msgstr ""
+
+#: includes/class-admin.php:275
+msgid "Підключення успішне."
+msgstr ""
+
+#: includes/class-admin.php:308
+msgid "LeadForms Go імпортував старі дані. Вимкніть старі плагіни reIntegration, щоб уникнути дублювання обробників."
+msgstr ""
+
+#: includes/class-admin.php:324, includes/class-admin.php:464
+msgid "Обробляється"
+msgstr ""
+
+#: includes/class-admin.php:324, includes/class-admin.php:465
+msgid "Успішно"
+msgstr ""
+
+#: includes/class-admin.php:324, includes/class-admin.php:467
+msgid "Помилка"
+msgstr ""
+
+#: includes/class-admin.php:327
+msgid "Усі форми"
+msgstr ""
+
+#: includes/class-admin.php:329
+msgid "Усі статуси"
+msgstr ""
+
+#: includes/class-admin.php:331
+msgid "Інтеграція"
+msgstr ""
+
+#: includes/class-admin.php:331
+msgid "Усі інтеграції"
+msgstr ""
+
+#: includes/class-admin.php:333
+msgid "Від"
+msgstr ""
+
+#: includes/class-admin.php:333
+msgid "До"
+msgstr ""
+
+#: includes/class-admin.php:333
+msgid "Застосувати"
+msgstr ""
+
+#: includes/class-admin.php:333
+msgid "Скинути"
+msgstr ""
+
+#: includes/class-admin.php:337
+msgid "%d заявок"
+msgstr ""
+
+#: includes/class-admin.php:337
+msgid "Зберігаються локально незалежно від стану інтеграцій."
+msgstr ""
+
+#: includes/class-admin.php:337
+msgid "Повторити невдалі"
+msgstr ""
+
+#: includes/class-admin.php:337
+msgid "Вибрати всі"
+msgstr ""
+
+#: includes/class-admin.php:337, includes/class-admin.php:370
+msgid "Заявка"
+msgstr ""
+
+#: includes/class-admin.php:337
+msgid "Контактні дані"
+msgstr ""
+
+#: includes/class-admin.php:337, includes/class-admin.php:376
+msgid "Доставка"
+msgstr ""
+
+#: includes/class-admin.php:338
+msgid "За вибраними фільтрами заявок немає."
+msgstr ""
+
+#: includes/class-admin.php:342
+msgid "Вибрати заявку #%d"
+msgstr ""
+
+#: includes/class-admin.php:342, includes/class-admin.php:370
+msgid "Видалена або імпортована форма"
+msgstr ""
+
+#: includes/class-admin.php:343
+msgid "Без інтеграцій"
+msgstr ""
+
+#: includes/class-admin.php:346
+msgid "Деталі"
+msgstr ""
+
+#: includes/class-admin.php:359
+msgid "До історії"
+msgstr ""
+
+#: includes/class-admin.php:361
+msgid "Заявку не знайдено."
+msgstr ""
+
+#: includes/class-admin.php:368
+msgid "Повторити невдалі доставки"
+msgstr ""
+
+#: includes/class-admin.php:370
+msgid "Мова"
+msgstr ""
+
+#: includes/class-admin.php:370, includes/class-privacy.php:41
+msgid "Створено"
+msgstr ""
+
+#: includes/class-admin.php:373
+msgid "Дані заявки"
+msgstr ""
+
+#: includes/class-admin.php:376
+msgid "%d каналів"
+msgstr ""
+
+#: includes/class-admin.php:377
+msgid "Для цієї заявки інтеграції не запускалися."
+msgstr ""
+
+#: includes/class-admin.php:389
+msgid "Повторити"
+msgstr ""
+
+#: includes/class-admin.php:391
+msgid "Спроб"
+msgstr ""
+
+#: includes/class-admin.php:391
+msgid "Остання спроба"
+msgstr ""
+
+#: includes/class-admin.php:391
+msgid "Наступна спроба"
+msgstr ""
+
+#: includes/class-admin.php:394
+msgid "Зовнішній запис:"
+msgstr ""
+
+#: includes/class-admin.php:394
+msgid "Відкрити в сервісі"
+msgstr ""
+
+#: includes/class-admin.php:398
+msgid "Історія спроб"
+msgstr ""
+
+#: includes/class-admin.php:399
+msgid "Спроба #%d"
+msgstr ""
+
+#: includes/class-admin.php:409
+msgid "%d доставку додано в чергу."
+msgid_plural "%d доставок додано в чергу."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-admin.php:409
+msgid "Немає невдалих доставок для повторення."
+msgstr ""
+
+#: includes/class-admin.php:462
+msgid "Очікує"
+msgstr ""
+
+#: includes/class-admin.php:466
+msgid "Надіслано"
+msgstr ""
+
+#: includes/class-admin.php:468
+msgid "Скасовано"
+msgstr ""
+
+#: includes/class-admin.php:475
+msgid "Некоректний запит."
+msgstr ""
+
+#: includes/class-connectors.php:38
+msgid "Не вдалося з’єднатися з віддаленим сервісом."
+msgstr ""
+
+#: includes/class-connectors.php:43
+msgid "Віддалений сервіс відхилив запит."
+msgstr ""
+
+#: includes/class-connectors.php:53
+msgid "Потрібні токен Telegram-бота та ID чату."
+msgstr ""
+
+#: includes/class-connectors.php:67
+msgid "Нова заявка з форми:"
+msgstr ""
+
+#: includes/class-connectors.php:71, includes/class-connectors.php:192
+msgid "Джерело:"
+msgstr ""
+
+#: includes/class-connectors.php:94
+msgid "Потрібні ID таблиці та назва аркуша."
+msgstr ""
+
+#: includes/class-connectors.php:95
+msgid "Шлях до облікових даних Google не налаштований."
+msgstr ""
+
+#: includes/class-connectors.php:96
+msgid "Розширення OpenSSL недоступне на сервері."
+msgstr ""
+
+#: includes/class-connectors.php:99
+msgid "Файл облікових даних має бути доступним для читання та розміщеним поза публічним каталогом WordPress."
+msgstr ""
+
+#: includes/class-connectors.php:133, includes/class-connectors.php:143, includes/class-connectors.php:147
+msgid "Некоректний файл облікових даних Google."
+msgstr ""
+
+#: includes/class-connectors.php:152
+msgid "Не вдалося підписати запит авторизації Google."
+msgstr ""
+
+#: includes/class-connectors.php:155
+msgid "Не вдалося з’єднатися з Google."
+msgstr ""
+
+#: includes/class-connectors.php:157
+msgid "Не вдалося авторизуватися в Google."
+msgstr ""
+
+#: includes/class-connectors.php:173
+msgid "Потрібні ID партнера та токен CRM."
+msgstr ""
+
+#: includes/class-connectors.php:180
+msgid "Налаштування заповнені. G-PLUS не надає безпечного тестового запиту без створення заявки."
+msgstr ""
+
+#: includes/class-delivery-queue.php:69
+msgid "Інтеграція вимкнена або недоступна."
+msgstr ""
+
+#: includes/class-delivery-queue.php:74
+msgid "Дані заявки пошкоджені."
+msgstr ""
+
+#: includes/class-delivery-queue.php:80
+msgid "Під час доставки сталася внутрішня помилка."
+msgstr ""
+
+#: includes/class-form-builder.php:14, includes/class-form-builder.php:14
+msgid "Ім’я"
+msgstr ""
+
+#: includes/class-form-builder.php:14
+msgid "Ваше ім’я"
+msgstr ""
+
+#: includes/class-form-builder.php:15, includes/class-form-builder.php:15
+msgid "Прізвище"
+msgstr ""
+
+#: includes/class-form-builder.php:15
+msgid "Ваше прізвище"
+msgstr ""
+
+#: includes/class-form-builder.php:16, includes/class-form-builder.php:16, includes/class-form-builder.php:16
+msgid "Номер телефону"
+msgstr ""
+
+#: includes/class-form-builder.php:17, includes/class-form-builder.php:17
+msgid "Електронна пошта"
+msgstr ""
+
+#: includes/class-form-builder.php:18, includes/class-form-builder.php:18
+msgid "Компанія"
+msgstr ""
+
+#: includes/class-form-builder.php:18
+msgid "Назва компанії"
+msgstr ""
+
+#: includes/class-form-builder.php:19, includes/class-form-builder.php:19
+msgid "Місто"
+msgstr ""
+
+#: includes/class-form-builder.php:19
+msgid "Ваше місто"
+msgstr ""
+
+#: includes/class-form-builder.php:20, includes/class-form-builder.php:20
+msgid "Повідомлення"
+msgstr ""
+
+#: includes/class-form-builder.php:20
+msgid "Ваше повідомлення"
+msgstr ""
+
+#: includes/class-form-builder.php:21, includes/class-form-builder.php:21
+msgid "Згода на обробку даних"
+msgstr ""
+
+#: includes/class-form-translations.php:14
+msgid "Українська"
+msgstr ""
+
+#: includes/class-form-translations.php:15
+msgid "English"
+msgstr ""
+
+#: includes/class-plugin.php:52
+msgid "LeadForms Go: форму не знайдено."
+msgstr ""
+
+#: includes/class-plugin.php:53
+msgid "LeadForms Go: форму вимкнено."
+msgstr ""
+
+#: includes/class-plugin.php:86
+msgid "Відправка…"
+msgstr ""
+
+#: includes/class-plugin.php:87
+msgid "Дякуємо! Форму успішно відправлено."
+msgstr ""
+
+#: includes/class-plugin.php:88
+msgid "Не вдалося відправити форму. Спробуйте ще раз."
+msgstr ""
+
+#: includes/class-plugin.php:89, includes/class-submission-validator.php:38
+msgid "Заповніть це поле."
+msgstr ""
+
+#: includes/class-plugin.php:90, includes/class-submission-validator.php:97
+msgid "Смайлики використовувати не можна."
+msgstr ""
+
+#: includes/class-plugin.php:91, includes/class-submission-validator.php:96
+msgid "Максимальна довжина — %d символів."
+msgstr ""
+
+#: includes/class-plugin.php:92, includes/class-submission-validator.php:98
+msgid "Введіть коректний номер телефону — мінімум %d цифр."
+msgstr ""
+
+#: includes/class-plugin.php:93
+msgid "Перевірте правильність значення."
+msgstr ""
+
+#: includes/class-plugin.php:108
+msgid "Некоректне джерело запиту."
+msgstr ""
+
+#: includes/class-plugin.php:111
+msgid "Форму не знайдено або вимкнено."
+msgstr ""
+
+#: includes/class-plugin.php:114
+msgid "Сесію завершено. Оновіть сторінку та спробуйте ще раз."
+msgstr ""
+
+#: includes/class-settings.php:58
+msgid "Секрет не оновлено: сервер не зміг безпечно зашифрувати значення."
+msgstr ""
+
+#: includes/class-plugin.php:121, includes/class-plugin.php:123
+msgid "Некоректні дані форми."
+msgstr ""
+
+#: includes/class-plugin.php:126
+msgid "Забагато спроб. Спробуйте пізніше."
+msgstr ""
+
+#: includes/class-plugin.php:128
+msgid "Некоректний ідентифікатор запиту."
+msgstr ""
+
+#: includes/class-plugin.php:132
+msgid "Перевірте правильність заповнення полів."
+msgstr ""
+
+#: includes/class-plugin.php:133
+msgid "Дані форми відсутні."
+msgstr ""
+
+#: includes/class-plugin.php:137
+msgid "Не вдалося зберегти заявку. Спробуйте ще раз."
+msgstr ""
+
+#: includes/class-privacy.php:14, includes/class-privacy.php:23, includes/class-privacy.php:42
+msgid "Заявки LeadForms Go"
+msgstr ""
+
+#: includes/class-repositories.php:156
+msgid "Результат перерваної доставки невідомий. Автоматичний повтор вимкнено, щоб уникнути дублювання."
+msgstr ""
+
+#: includes/class-submission-validator.php:99
+msgid "Введіть коректну електронну адресу."
+msgstr ""

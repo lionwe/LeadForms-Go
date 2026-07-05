@@ -57,7 +57,10 @@ final class Telegram_Connector extends Abstract_Connector
 		$valid = $this->validate_settings();
 		if (is_wp_error($valid)) return new Result(false, 0, $valid->get_error_message(), false);
 		$s = $this->settings();
-		return $this->result(wp_remote_get('https://api.telegram.org/bot' . rawurlencode($s['token']) . '/getChat?chat_id=' . rawurlencode($s['chat_id']), ['timeout' => self::REQUEST_TIMEOUT]));
+		return $this->result(wp_remote_post('https://api.telegram.org/bot' . rawurlencode($s['token']) . '/getChat', [
+			'timeout' => self::REQUEST_TIMEOUT,
+			'body' => ['chat_id' => $s['chat_id']],
+		]));
 	}
 	public function send(array $data, string $referer): Result
 	{
@@ -92,12 +95,9 @@ final class Sheets_Connector extends Abstract_Connector
 	{
 		$s = $this->settings();
 		if (empty($s['spreadsheet_id']) || empty($s['sheet_name'])) return new \WP_Error('missing_settings', __('Потрібні ID таблиці та назва аркуша.', 'leadforms-go'));
-		if (! defined('LEADFORMS_GO_GOOGLE_CREDENTIALS_PATH')) return new \WP_Error('missing_credentials', __('Шлях до облікових даних Google не налаштований.', 'leadforms-go'));
 		if (! function_exists('openssl_sign')) return new \WP_Error('missing_openssl', __('Розширення OpenSSL недоступне на сервері.', 'leadforms-go'));
-		$path = realpath((string) LEADFORMS_GO_GOOGLE_CREDENTIALS_PATH);
-		$webroot = realpath(ABSPATH);
-		if ($path === false || ! is_readable($path) || ($webroot !== false && str_starts_with(wp_normalize_path($path), trailingslashit(wp_normalize_path($webroot))))) return new \WP_Error('unsafe_credentials', __('Файл облікових даних має бути доступним для читання та розміщеним поза публічним каталогом WordPress.', 'leadforms-go'));
-		return true;
+		$credentials = Google_Credentials::credentials();
+		return is_wp_error($credentials) ? $credentials : true;
 	}
 	public function test_connection(): Result
 	{
@@ -118,7 +118,7 @@ final class Sheets_Connector extends Abstract_Connector
 		foreach ($data as $key => $value) if (! in_array($key, $order, true)) $values[] = $value;
 		$values[] = $referer;
 		$range = rawurlencode($s['sheet_name'] . '!A1');
-		$url = 'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($s['spreadsheet_id']) . '/values/' . $range . ':append?valueInputOption=USER_ENTERED';
+		$url = 'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($s['spreadsheet_id']) . '/values/' . $range . ':append?valueInputOption=RAW';
 		$response = wp_remote_post($url, ['timeout' => self::REQUEST_TIMEOUT, 'headers' => ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'], 'body' => wp_json_encode(['values' => [$values]])]);
 		$reference = 'https://docs.google.com/spreadsheets/d/' . rawurlencode($s['spreadsheet_id']) . '/edit';
 		return $this->result($response, $reference);
@@ -127,17 +127,14 @@ final class Sheets_Connector extends Abstract_Connector
 	{
 		$valid = $this->validate_settings();
 		if (is_wp_error($valid)) return $valid;
-		$path = realpath((string) LEADFORMS_GO_GOOGLE_CREDENTIALS_PATH);
-		$size = $path !== false ? @filesize($path) : false;
-		if ($path === false || ! is_readable($path) || ! is_int($size) || $size > 1024 * 1024) {
-			return new \WP_Error('invalid_credentials', __('Некоректний файл облікових даних Google.', 'leadforms-go'));
-		}
-		$cache_key = 'leadforms_go_google_' . substr(hash('sha256', $path . ':' . (string) @filemtime($path)), 0, 20);
+		$credentials = Google_Credentials::credentials();
+		if (is_wp_error($credentials)) return $credentials;
+		$cache_key = 'leadforms_go_google_' . substr(hash('sha256', (string) $credentials['client_email'] . ':' . (string) $credentials['private_key_id']), 0, 20);
 		$cached = get_transient($cache_key);
-		if (is_string($cached) && $cached !== '') return $cached;
-		$contents = @file_get_contents($path);
-		$credentials = is_string($contents) ? json_decode($contents, true) : null;
-		if (! is_array($credentials) || empty($credentials['client_email']) || empty($credentials['private_key']) || empty($credentials['token_uri'])) return new \WP_Error('invalid_credentials', __('Некоректний файл облікових даних Google.', 'leadforms-go'));
+		if (is_string($cached) && $cached !== '') {
+			$decrypted = Settings::decrypt_secret($cached);
+			if ($decrypted !== '') return $decrypted;
+		}
 		$token_uri = esc_url_raw((string) $credentials['token_uri']);
 		$token_host = strtolower((string) wp_parse_url($token_uri, PHP_URL_HOST));
 		if ($token_uri === '' || ! str_starts_with($token_uri, 'https://') || ! in_array($token_host, ['oauth2.googleapis.com', 'accounts.google.com'], true)) {
@@ -152,12 +149,12 @@ final class Sheets_Connector extends Abstract_Connector
 		if (is_wp_error($response)) return new \WP_Error('token_transport_failed', __('Не вдалося з’єднатися з Google.', 'leadforms-go'));
 		$body = json_decode(wp_remote_retrieve_body($response), true);
 		if (wp_remote_retrieve_response_code($response) !== 200 || empty($body['access_token'])) return new \WP_Error('token_failed', __('Не вдалося авторизуватися в Google.', 'leadforms-go'));
-		set_transient($cache_key, $body['access_token'], max(60, ((int) ($body['expires_in'] ?? 3600)) - 120));
+		set_transient($cache_key, Settings::encrypt_secret((string) $body['access_token']), max(60, ((int) ($body['expires_in'] ?? 3600)) - 120));
 		return (string) $body['access_token'];
 	}
 	private function token_error_is_retryable(\WP_Error $error): bool
 	{
-		return ! in_array($error->get_error_code(), ['missing_credentials', 'missing_openssl', 'unsafe_credentials', 'invalid_credentials', 'signing_failed'], true);
+		return ! in_array($error->get_error_code(), ['missing_credentials', 'missing_openssl', 'unsafe_credentials', 'invalid_credentials', 'invalid_email', 'invalid_private_key', 'invalid_token_uri', 'signing_failed'], true);
 	}
 }
 
@@ -183,7 +180,7 @@ final class Crm_Connector extends Abstract_Connector
 		$s = $this->settings(); $name_parts = []; $phone = ''; $notes = [];
 		foreach ($data as $key => $value) {
 			if (preg_match('/телефон|номер|phone|tel/iu', (string) $key)) $phone = (string) $value;
-			elseif (preg_match('/ім.?я|прізвище|(^|[_\s-])(first|last)?name($|[_\s-])/iu', (string) $key)) $name_parts[] = sanitize_text_field((string) $value);
+			elseif (preg_match('/ім.?я|прізвище|(^|[_\s-])(first[_\s-]?name|last[_\s-]?name|name)($|[_\s-])/iu', (string) $key)) $name_parts[] = sanitize_text_field((string) $value);
 			else $notes[] = sanitize_text_field((string) $key) . ': ' . sanitize_textarea_field((string) $value);
 		}
 		if ($referer !== '') $notes[] = __('Джерело:', 'leadforms-go') . ' ' . sanitize_url($referer);

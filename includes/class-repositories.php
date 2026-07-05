@@ -17,7 +17,7 @@ final class Repositories
 	{
 		global $wpdb;
 		$table = Database::tables()['forms'];
-		return $wpdb->get_results("SELECT id, name, editor_mode, legacy_id, updated_at FROM {$table} ORDER BY id DESC", ARRAY_A) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return $wpdb->get_results("SELECT id, name, editor_mode, active, legacy_id, updated_at FROM {$table} ORDER BY id DESC", ARRAY_A) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 
 	public static function form(int $id, bool $legacy = false): ?array
@@ -29,7 +29,7 @@ final class Repositories
 		return is_array($row) ? $row : null;
 	}
 
-	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати'): int|false
+	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true): int|false
 	{
 		global $wpdb;
 		$table = Database::tables()['forms'];
@@ -40,14 +40,17 @@ final class Repositories
 			'editor_mode' => $editor_mode,
 			'form_schema' => wp_json_encode($schema, JSON_UNESCAPED_UNICODE),
 			'submit_label' => $submit_label,
+			'default_locale' => Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE,
+			'translations' => wp_json_encode(Form_Translations::sanitize($translations), JSON_UNESCAPED_UNICODE),
+			'active' => $active ? 1 : 0,
 			'updated_at' => $now,
 		];
 		if ($id > 0) {
-			$result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%s'], ['%d']);
+			$result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'], ['%d']);
 			return $result === false ? false : $id;
 		}
 		$data['created_at'] = $now;
-		$result = $wpdb->insert($table, $data, ['%s', '%s', '%s', '%s', '%s', '%s', '%s']);
+		$result = $wpdb->insert($table, $data, ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']);
 		return $result ? (int) $wpdb->insert_id : false;
 	}
 
@@ -57,19 +60,45 @@ final class Repositories
 		return $wpdb->delete(Database::tables()['forms'], ['id' => $id], ['%d']) !== false;
 	}
 
-	public static function create_submission(?int $form_id, array $payload, string $referer): int
+	/** @return array{id:int, created:bool} */
+	public static function create_submission(?int $form_id, array $payload, string $referer, string $locale, string $request_id): array
 	{
 		global $wpdb;
 		$encoded = wp_json_encode($payload, JSON_UNESCAPED_UNICODE);
-		if (! is_string($encoded)) return 0;
-		$inserted = $wpdb->insert(Database::tables()['submissions'], [
-			'form_id' => $form_id ?: null,
-			'payload' => $encoded,
-			'referer' => sanitize_url($referer),
-			'status' => 'pending',
-			'created_at' => current_time('mysql'),
-		], ['%d', '%s', '%s', '%s', '%s']);
-		return $inserted === false ? 0 : (int) $wpdb->insert_id;
+		if (! is_string($encoded)) return ['id' => 0, 'created' => false];
+		$table = Database::tables()['submissions'];
+		$inserted = $wpdb->query($wpdb->prepare(
+			"INSERT IGNORE INTO {$table} (form_id, payload, referer, locale, request_id, status, created_at) VALUES (%d, %s, %s, %s, %s, 'pending', %s)",
+			$form_id ?: null,
+			$encoded,
+			sanitize_url($referer),
+			Form_Translations::normalize_locale($locale) ?: Form_Translations::DEFAULT_LOCALE,
+			$request_id,
+			current_time('mysql')
+		));
+		if ($inserted === false) return ['id' => 0, 'created' => false];
+		if ($inserted === 1) return ['id' => (int) $wpdb->insert_id, 'created' => true];
+		$id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE request_id = %s", $request_id));
+		return ['id' => $id, 'created' => false];
+	}
+
+	public static function consume_rate_limit(string $key_hash, int $limit, int $window): bool
+	{
+		global $wpdb;
+		$table = Database::tables()['rate_limits'];
+		$now = current_time('mysql');
+		$expires = wp_date('Y-m-d H:i:s', time() + $window, wp_timezone());
+		$result = $wpdb->query($wpdb->prepare(
+			"INSERT INTO {$table} (key_hash, attempts, expires_at) VALUES (%s, 1, %s) ON DUPLICATE KEY UPDATE attempts = IF(expires_at <= %s, 1, attempts + 1), expires_at = IF(expires_at <= %s, VALUES(expires_at), expires_at)",
+			$key_hash,
+			$expires,
+			$now,
+			$now
+		));
+		if ($result === false) return false;
+		$attempts = (int) $wpdb->get_var($wpdb->prepare("SELECT attempts FROM {$table} WHERE key_hash = %s", $key_hash));
+		if (wp_rand(1, 100) === 1) $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE expires_at < %s", $now));
+		return $attempts <= $limit;
 	}
 
 	public static function create_delivery(int $submission_id, string $connector): int
@@ -99,7 +128,7 @@ final class Repositories
 		$tables = Database::tables();
 		$now = current_time('mysql');
 		return $wpdb->get_results($wpdb->prepare(
-			"SELECT d.*, s.payload, s.referer, s.form_id FROM {$tables['deliveries']} d INNER JOIN {$tables['submissions']} s ON s.id = d.submission_id WHERE d.status = 'queued' AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= %s) ORDER BY d.next_attempt_at ASC, d.id ASC LIMIT %d",
+			"SELECT d.*, s.payload, s.referer, s.form_id, s.locale FROM {$tables['deliveries']} d INNER JOIN {$tables['submissions']} s ON s.id = d.submission_id WHERE d.status = 'queued' AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= %s) ORDER BY d.next_attempt_at ASC, d.id ASC LIMIT %d",
 			$now,
 			min(50, max(1, $limit))
 		), ARRAY_A) ?: [];
@@ -109,7 +138,8 @@ final class Repositories
 	{
 		global $wpdb;
 		return $wpdb->query($wpdb->prepare(
-			"UPDATE " . Database::tables()['deliveries'] . " SET status = 'processing', updated_at = %s WHERE id = %d AND status = 'queued'",
+			"UPDATE " . Database::tables()['deliveries'] . " SET status = 'processing', last_attempt_at = %s, updated_at = %s WHERE id = %d AND status = 'queued'",
+			current_time('mysql'),
 			current_time('mysql'),
 			$delivery_id
 		)) === 1;
@@ -120,13 +150,11 @@ final class Repositories
 		global $wpdb;
 		$table = Database::tables()['deliveries'];
 		$cutoff = wp_date('Y-m-d H:i:s', time() - (10 * MINUTE_IN_SECONDS), wp_timezone());
-		$now = current_time('mysql');
 		$submission_ids = $wpdb->get_col($wpdb->prepare("SELECT DISTINCT submission_id FROM {$table} WHERE status = 'processing' AND updated_at < %s", $cutoff));
 		$wpdb->query($wpdb->prepare(
-			"UPDATE {$table} SET status = 'queued', next_attempt_at = %s, error_message = %s, updated_at = %s WHERE status = 'processing' AND updated_at < %s",
-			$now,
-			__('Попередню спробу доставки було перервано.', 'leadforms-go'),
-			$now,
+			"UPDATE {$table} SET status = 'failed', retryable = 0, next_attempt_at = NULL, error_message = %s, updated_at = %s WHERE status = 'processing' AND updated_at < %s",
+			__('Результат перерваної доставки невідомий. Автоматичний повтор вимкнено, щоб уникнути дублювання.', 'leadforms-go'),
+			current_time('mysql'),
 			$cutoff
 		));
 		foreach ($submission_ids as $submission_id) self::sync_submission_status((int) $submission_id);
@@ -365,6 +393,35 @@ final class Repositories
 			'failed_today' => $failed_today,
 			'activity' => $activity,
 		];
+	}
+
+	public static function purge_submissions_older_than(int $days): int
+	{
+		global $wpdb;
+		if ($days < 1) return 0;
+		$tables = Database::tables();
+		$cutoff = wp_date('Y-m-d H:i:s', time() - ($days * DAY_IN_SECONDS), wp_timezone());
+		$total = 0;
+		for ($batch = 0; $batch < 10; ++$batch) {
+			$ids = array_map('absint', $wpdb->get_col($wpdb->prepare("SELECT id FROM {$tables['submissions']} WHERE created_at < %s ORDER BY id ASC LIMIT 500", $cutoff)));
+			if ($ids === []) break;
+			$total += self::delete_submissions($ids);
+			if (count($ids) < 500) break;
+		}
+		return $total;
+	}
+
+	public static function delete_submissions(array $submission_ids): int
+	{
+		global $wpdb;
+		$ids = array_values(array_unique(array_filter(array_map('absint', $submission_ids))));
+		if ($ids === []) return 0;
+		$tables = Database::tables();
+		$placeholders = implode(',', array_fill(0, count($ids), '%d'));
+		$wpdb->query($wpdb->prepare("DELETE a FROM {$tables['attempts']} a INNER JOIN {$tables['deliveries']} d ON d.id = a.delivery_id WHERE d.submission_id IN ({$placeholders})", $ids));
+		$wpdb->query($wpdb->prepare("DELETE FROM {$tables['deliveries']} WHERE submission_id IN ({$placeholders})", $ids));
+		$deleted = $wpdb->query($wpdb->prepare("DELETE FROM {$tables['submissions']} WHERE id IN ({$placeholders})", $ids));
+		return is_int($deleted) ? $deleted : 0;
 	}
 
 	private static function submission_deliveries(int $submission_id, bool $with_attempts = false): array

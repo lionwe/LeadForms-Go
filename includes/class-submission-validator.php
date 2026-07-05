@@ -11,7 +11,7 @@ final class Submission_Validator
 	/**
 	 * @return array{data: array<string, string>, errors: array<string, string>}
 	 */
-	public static function validate(array $form, array $submitted): array
+	public static function validate(array $form, array $submitted, array $messages = []): array
 	{
 		$schema = [];
 		if (($form['editor_mode'] ?? 'code') === 'visual') {
@@ -20,25 +20,32 @@ final class Submission_Validator
 		}
 
 		return $schema === []
-			? self::validate_code_form($submitted)
-			: self::validate_visual_form($schema, $submitted);
+			? self::validate_code_form((string) ($form['code'] ?? ''), $submitted, $messages)
+			: self::validate_visual_form($schema, $submitted, $messages);
 	}
 
 	/**
 	 * @return array{data: array<string, string>, errors: array<string, string>}
 	 */
-	private static function validate_visual_form(array $schema, array $submitted): array
+	private static function validate_visual_form(array $schema, array $submitted, array $messages): array
 	{
 		$data = [];
 		$errors = [];
 		foreach ($schema as $field) {
-			$name = (string) $field['name'];
+			$name = (string) $field['key'];
 			$value = isset($submitted[$name]) && is_scalar($submitted[$name]) ? trim((string) $submitted[$name]) : '';
+			if (($field['type'] ?? '') === 'checkbox') {
+				if (! self::is_checked($value)) {
+					if (! empty($field['required'])) $errors[$name] = (string) ($messages['required'] ?? __('Заповніть це поле.', 'leadforms-go'));
+					continue;
+				}
+				$value = '1';
+			}
 			if ($value === '') {
-				if (! empty($field['required'])) $errors[$name] = __('Заповніть це поле.', 'leadforms-go');
+				if (! empty($field['required'])) $errors[$name] = (string) ($messages['required'] ?? __('Заповніть це поле.', 'leadforms-go'));
 				continue;
 			}
-			$error = self::value_error($value, (string) $field['type']);
+			$error = self::value_error($value, (string) $field['type'], null, $messages);
 			if ($error !== '') {
 				$errors[$name] = $error;
 				continue;
@@ -53,24 +60,57 @@ final class Submission_Validator
 	/**
 	 * @return array{data: array<string, string>, errors: array<string, string>}
 	 */
-	private static function validate_code_form(array $submitted): array
+	private static function validate_code_form(string $code, array $submitted, array $messages): array
 	{
 		$data = [];
 		$errors = [];
-		foreach ($submitted as $raw_key => $raw_value) {
-			if (! is_scalar($raw_value)) continue;
-			$key = sanitize_text_field((string) $raw_key);
-			if ($key === '' || strlen($key) > 190) continue;
-			$value = trim((string) $raw_value);
-			$type = preg_match('/phone|tel|телефон|номер/iu', $key) === 1 ? 'tel' : (preg_match('/e-?mail|пошт/iu', $key) === 1 ? 'email' : 'text');
-			$error = self::value_error($value, $type, $type === 'text' ? 1000 : null);
+		foreach (self::code_fields($code) as $field) {
+			$key = $field['name'];
+			$value = isset($submitted[$key]) && is_scalar($submitted[$key]) ? trim((string) $submitted[$key]) : '';
+			if ($field['type'] === 'checkbox') {
+				if (! self::is_checked($value)) {
+					if ($field['required']) $errors[$key] = (string) ($messages['required'] ?? __('Заповніть це поле.', 'leadforms-go'));
+					continue;
+				}
+				$value = '1';
+			}
+			if ($value === '') {
+				if ($field['required']) $errors[$key] = (string) ($messages['required'] ?? __('Заповніть це поле.', 'leadforms-go'));
+				continue;
+			}
+			$error = self::value_error($value, $field['type'], null, $messages);
 			if ($error !== '') {
 				$errors[$key] = $error;
 				continue;
 			}
 			$data[$key] = sanitize_textarea_field($value);
 		}
+		self::append_attribution($data, $submitted);
 		return ['data' => $data, 'errors' => $errors];
+	}
+
+	/** @return array<int, array{name:string, type:string, required:bool}> */
+	private static function code_fields(string $code): array
+	{
+		if (! class_exists('\WP_HTML_Tag_Processor')) return [];
+		$processor = new \WP_HTML_Tag_Processor(Form_Builder::sanitize_code($code));
+		$fields = [];
+		while ($processor->next_tag()) {
+			$tag = strtolower((string) $processor->get_tag());
+			if (! in_array($tag, ['input', 'textarea', 'select'], true)) continue;
+			$name = sanitize_text_field((string) $processor->get_attribute('name'));
+			if ($name === '' || strlen($name) > 190 || isset($fields[$name])) continue;
+			$type = $tag === 'textarea' ? 'textarea' : sanitize_key((string) $processor->get_attribute('type'));
+			if ($tag === 'select') $type = 'text';
+			if (in_array($type, ['submit', 'button', 'reset', 'file', 'image'], true)) continue;
+			if (! in_array($type, ['tel', 'email', 'textarea', 'checkbox'], true)) $type = 'text';
+			$fields[$name] = [
+				'name' => $name,
+				'type' => $type,
+				'required' => $processor->get_attribute('required') !== null,
+			];
+		}
+		return array_values($fields);
 	}
 
 	private static function append_attribution(array &$data, array $submitted): void
@@ -85,7 +125,12 @@ final class Submission_Validator
 		}
 	}
 
-	private static function value_error(string $value, string $type, ?int $maximum = null): string
+	private static function is_checked(string $value): bool
+	{
+		return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
+	}
+
+	private static function value_error(string $value, string $type, ?int $maximum = null, array $messages = []): string
 	{
 		$maximum ??= match ($type) {
 			'tel' => 32,
@@ -93,10 +138,10 @@ final class Submission_Validator
 			default => 255,
 		};
 		$length = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
-		if ($length > $maximum) return sprintf(__('Максимальна довжина — %d символів.', 'leadforms-go'), $maximum);
-		if (preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}\x{200D}]/u', $value) === 1) return __('Смайлики використовувати не можна.', 'leadforms-go');
-		if ($type === 'tel' && strlen((string) preg_replace('/\D+/', '', $value)) < 12) return __('Введіть коректний номер телефону — мінімум 12 цифр.', 'leadforms-go');
-		if ($type === 'email' && ! is_email($value)) return __('Введіть коректну електронну адресу.', 'leadforms-go');
+		if ($length > $maximum) return sprintf((string) ($messages['tooLong'] ?? __('Максимальна довжина — %d символів.', 'leadforms-go')), $maximum);
+		if (preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}\x{200D}]/u', $value) === 1) return (string) ($messages['emoji'] ?? __('Смайлики використовувати не можна.', 'leadforms-go'));
+		if ($type === 'tel' && strlen((string) preg_replace('/\D+/', '', $value)) < 12) return sprintf((string) ($messages['phone'] ?? __('Введіть коректний номер телефону — мінімум %d цифр.', 'leadforms-go')), 12);
+		if ($type === 'email' && ! is_email($value)) return (string) ($messages['email'] ?? __('Введіть коректну електронну адресу.', 'leadforms-go'));
 		return '';
 	}
 }
