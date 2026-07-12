@@ -29,7 +29,7 @@ final class Repositories
 		return is_array($row) ? $row : null;
 	}
 
-	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true): int|false
+	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = []): int|false
 	{
 		global $wpdb;
 		$table = Database::tables()['forms'];
@@ -40,17 +40,18 @@ final class Repositories
 			'editor_mode' => $editor_mode,
 			'form_schema' => wp_json_encode($schema, JSON_UNESCAPED_UNICODE),
 			'submit_label' => $submit_label,
+			'button_icon' => wp_json_encode(Form_Builder::sanitize_button_icon($button_icon), JSON_UNESCAPED_UNICODE),
 			'default_locale' => Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE,
 			'translations' => wp_json_encode(Form_Translations::sanitize($translations), JSON_UNESCAPED_UNICODE),
 			'active' => $active ? 1 : 0,
 			'updated_at' => $now,
 		];
 		if ($id > 0) {
-			$result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'], ['%d']);
+			$result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'], ['%d']);
 			return $result === false ? false : $id;
 		}
 		$data['created_at'] = $now;
-		$result = $wpdb->insert($table, $data, ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']);
+		$result = $wpdb->insert($table, $data, ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']);
 		return $result ? (int) $wpdb->insert_id : false;
 	}
 

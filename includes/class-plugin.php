@@ -62,7 +62,8 @@ final class Plugin
 			$schema = json_decode((string) ($form['form_schema'] ?? ''), true);
 			$schema = Form_Builder::sanitize_schema($schema);
 			if ($schema !== []) {
-				$form_code = Form_Builder::render(Form_Translations::apply_to_schema($schema, $translation), (string) $translation['submit_label'], $instance_key);
+				$button_icon = json_decode((string) ($form['button_icon'] ?? ''), true);
+				$form_code = Form_Builder::render(Form_Translations::apply_to_schema($schema, $translation), (string) $translation['submit_label'], $instance_key, Form_Builder::sanitize_button_icon(is_array($button_icon) ? $button_icon : []));
 			}
 		}
 		wp_enqueue_script('leadforms-go');
@@ -132,6 +133,9 @@ final class Plugin
 		if ($errors !== []) wp_send_json_error(['message' => __('Перевірте правильність заповнення полів.', 'leadforms-go'), 'errors' => $errors], 422);
 		if ($data === []) wp_send_json_error(['message' => __('Дані форми відсутні.', 'leadforms-go')], 422);
 		$referer = Submission_Security::referer();
+		$data = apply_filters('leadforms_go_submission_data', $data, $form_id, $referer);
+		$data = is_array($data) ? Submission_Validator::sanitize_payload($data) : [];
+		if ($data === []) wp_send_json_error(['message' => __('Дані форми відсутні.', 'leadforms-go')], 422);
 		$submission = Repositories::create_submission($form_id, $data, $referer, $locale, $request_id);
 		$submission_id = $submission['id'];
 		if ($submission_id <= 0) wp_send_json_error(['message' => __('Не вдалося зберегти заявку. Спробуйте ще раз.', 'leadforms-go')], 500);
@@ -147,6 +151,22 @@ final class Plugin
 		do_action('leadforms_go_submission_processed', $submission_id, $data, $referer);
 		wp_send_json_success(['message' => $translation['messages']['success'], 'submission_id' => $submission_id, 'deliveries' => $delivery_count]);
 	}
+
+	public function capture_submission(array $data, ?int $form_id = null, string $referer = ''): int
+	{
+		$data = apply_filters('leadforms_go_submission_data', $data, $form_id, $referer);
+		$data = is_array($data) ? Submission_Validator::sanitize_payload($data) : [];
+		if ($data === []) return 0;
+		$submission = Repositories::create_submission($form_id, $data, $referer, '', 'server_' . wp_generate_uuid4());
+		$submission_id = $submission['id'];
+		if ($submission_id <= 0) return 0;
+		if ($submission['created']) {
+			$this->queue?->queue_submission($submission_id);
+			do_action('leadforms_go_submission_processed', $submission_id, $data, $referer);
+		}
+		return $submission_id;
+	}
+
 
 	private function legacy_addons_active(): bool
 	{

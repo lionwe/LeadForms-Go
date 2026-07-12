@@ -7,6 +7,9 @@ namespace LeadFormsGo;
 final class Submission_Validator
 {
 	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+	private const MAX_PAYLOAD_FIELDS = 50;
+	private const MAX_PAYLOAD_KEY_LENGTH = 190;
+	private const MAX_PAYLOAD_VALUE_LENGTH = 1000;
 
 	/**
 	 * @return array{data: array<string, string>, errors: array<string, string>}
@@ -22,6 +25,25 @@ final class Submission_Validator
 		return $schema === []
 			? self::validate_code_form((string) ($form['code'] ?? ''), $submitted, $messages)
 			: self::validate_visual_form($schema, $submitted, $messages);
+	}
+
+	/** @return array<string, string> */
+	public static function sanitize_payload(array $payload): array
+	{
+		$clean = [];
+		foreach (array_slice($payload, 0, self::MAX_PAYLOAD_FIELDS, true) as $key => $value) {
+			if (! is_scalar($key) || ! is_scalar($value)) continue;
+			$clean_key = sanitize_text_field((string) $key);
+			if ($clean_key === '' || self::length($clean_key) > self::MAX_PAYLOAD_KEY_LENGTH) continue;
+			$clean_value = sanitize_textarea_field((string) $value);
+			if (self::length($clean_value) > self::MAX_PAYLOAD_VALUE_LENGTH) {
+				$clean_value = function_exists('mb_substr')
+					? mb_substr($clean_value, 0, self::MAX_PAYLOAD_VALUE_LENGTH, 'UTF-8')
+					: substr($clean_value, 0, self::MAX_PAYLOAD_VALUE_LENGTH);
+			}
+			$clean[$clean_key] = $clean_value;
+		}
+		return $clean;
 	}
 
 	/**
@@ -143,5 +165,16 @@ final class Submission_Validator
 		if ($type === 'tel' && strlen((string) preg_replace('/\D+/', '', $value)) < 12) return sprintf((string) ($messages['phone'] ?? __('Введіть коректний номер телефону — мінімум %d цифр.', 'leadforms-go')), 12);
 		if ($type === 'email' && ! is_email($value)) return (string) ($messages['email'] ?? __('Введіть коректну електронну адресу.', 'leadforms-go'));
 		return '';
+	}
+	private static function length(string $value): int
+	{
+		return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+	}
+
+	private static function is_name_field(string $key): bool
+	{
+		$normalized = function_exists('mb_strtolower') ? mb_strtolower($key, 'UTF-8') : strtolower($key);
+		$normalized = str_replace(["'", '’', 'ʼ', '`', '"'], '', $normalized);
+		return preg_match('/(^|[_\s-])(first_?name|last_?name|surname|name|імя|прізвище)($|[_\s-])/iu', $normalized) === 1;
 	}
 }

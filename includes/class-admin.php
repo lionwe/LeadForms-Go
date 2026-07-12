@@ -65,6 +65,8 @@ final class Admin
 				'placeholder' => __('Підказка в полі', 'leadforms-go'),
 				'placeholderHelp' => __('Текст усередині порожнього поля.', 'leadforms-go'),
 				'copyLanguageConfirm' => __('Замінити тексти цієї мови текстами з основної мови?', 'leadforms-go'),
+				'iconSvgInvalid' => __('Вставте коректний SVG-код.', 'leadforms-go'),
+				'faCatalog' => self::fontawesome_catalog(),
 				'messageLabels' => [
 					'sending' => __('Відправлення', 'leadforms-go'),
 					'success' => __('Успішне відправлення', 'leadforms-go'),
@@ -82,6 +84,7 @@ final class Admin
 
 	public function dashboard(): void
 	{
+		$this->require_capability('manage_options');
 		$this->open(__('Огляд', 'leadforms-go'));
 		$stats = Repositories::dashboard_stats();
 		$queue = (new Delivery_Queue())->health();
@@ -136,6 +139,7 @@ final class Admin
 
 	public function forms(): void
 	{
+		$this->require_capability('manage_options');
 		$id = isset($_GET['id']) ? absint($_GET['id']) : 0;
 		$form = $id ? Repositories::form($id) : null;
 		$this->open($form ? __('Редагування форми', 'leadforms-go') : __('Форми', 'leadforms-go'));
@@ -148,6 +152,8 @@ final class Admin
 			$schema = json_decode((string) ($form['form_schema'] ?? ''), true);
 			$schema = Form_Builder::sanitize_schema(is_array($schema) ? $schema : []);
 			$submit_label = (string) ($form['submit_label'] ?? 'Надіслати');
+			$stored_button_icon = json_decode((string) ($form['button_icon'] ?? ''), true);
+			$button_icon = Form_Builder::sanitize_button_icon(is_array($stored_button_icon) ? $stored_button_icon : []);
 			$default_locale = Form_Translations::normalize_locale((string) ($form['default_locale'] ?? '')) ?: Form_Translations::DEFAULT_LOCALE;
 			$translations = json_decode((string) ($form['translations'] ?? ''), true);
 			$translations = Form_Translations::sanitize(is_array($translations) ? $translations : []);
@@ -168,7 +174,7 @@ final class Admin
 			foreach (Form_Builder::tiles() as $key => $tile) {
 				printf('<button type="button" class="lfg-field-tile" data-lfg-add="%s" data-lfg-template="%s"><span class="dashicons dashicons-plus-alt2"></span>%s</button>', esc_attr($key), esc_attr((string) wp_json_encode($tile, JSON_UNESCAPED_UNICODE)), esc_html($tile['label']));
 			}
-			echo '</div></aside><section class="lfg-builder__workspace"><h2>' . esc_html__('Поля форми', 'leadforms-go') . '</h2><div data-lfg-canvas></div><label><span>' . esc_html__('Текст кнопки', 'leadforms-go') . '</span><input type="text" name="submit_label" value="' . esc_attr($submit_label) . '"></label><details class="lfg-message-settings"><summary>' . esc_html__('Повідомлення форми', 'leadforms-go') . '</summary><div data-lfg-message-fields></div></details><section class="lfg-form-preview"><h3>' . esc_html__('Попередній перегляд', 'leadforms-go') . '</h3><div data-lfg-preview></div></section><textarea hidden name="schema" data-lfg-schema>' . esc_textarea((string) wp_json_encode($schema, JSON_UNESCAPED_UNICODE)) . '</textarea></section></div>';
+			echo '</div></aside><section class="lfg-builder__workspace"><h2>' . esc_html__('Поля форми', 'leadforms-go') . '</h2><div data-lfg-canvas></div><label><span>' . esc_html__('Текст кнопки', 'leadforms-go') . '</span><input type="text" name="submit_label" value="' . esc_attr($submit_label) . '"></label>' . $this->button_icon_settings($button_icon) . '<details class="lfg-message-settings"><summary>' . esc_html__('Повідомлення форми', 'leadforms-go') . '</summary><div data-lfg-message-fields></div></details><section class="lfg-form-preview"><h3>' . esc_html__('Попередній перегляд', 'leadforms-go') . '</h3><div data-lfg-preview></div></section><textarea hidden name="schema" data-lfg-schema>' . esc_textarea((string) wp_json_encode($schema, JSON_UNESCAPED_UNICODE)) . '</textarea></section></div>';
 			echo '<div id="lfg-code-panel" role="tabpanel" data-lfg-panel="code"' . ($mode === 'code' ? '' : ' hidden') . '><label class="lfg-code-editor"><span>' . esc_html__('HTML-код форми', 'leadforms-go') . '</span><textarea name="code" rows="22" data-lfg-code>' . esc_textarea((string) ($form['code'] ?? '')) . '</textarea></label><p class="description">' . esc_html__('Код відформатовано для читання. Якщо змінити його вручну й зберегти форму в режимі «Код», візуальна схема більше не використовуватиметься.', 'leadforms-go') . '</p></div>';
 			submit_button(__('Зберегти форму', 'leadforms-go'));
 			echo '</form>';
@@ -186,6 +192,7 @@ final class Admin
 
 	public function history(): void
 	{
+		$this->require_capability('leadforms_go_view_submissions');
 		$this->open(__('Історія заявок', 'leadforms-go'));
 		$this->history_notice();
 		$submission_id = isset($_GET['submission']) ? absint($_GET['submission']) : 0;
@@ -196,6 +203,7 @@ final class Admin
 
 	public function settings(): void
 	{
+		$this->require_capability('manage_options');
 		$s = Settings::all(); $name = 'leadforms_go_settings';
 		$this->open(__('Налаштування', 'leadforms-go'));
 		echo '<form method="post" action="options.php">'; settings_fields('leadforms_go');
@@ -252,6 +260,58 @@ final class Admin
 		echo '</div></section>';
 	}
 
+	private function button_icon_settings(array $button_icon): string
+	{
+		$button_icon = Form_Builder::sanitize_button_icon($button_icon);
+		$types = [
+			'none' => __('Без іконки', 'leadforms-go'),
+			'svg' => __('SVG-код', 'leadforms-go'),
+			'fontawesome' => __('Font Awesome', 'leadforms-go'),
+		];
+		$positions = [
+			'after' => __('Після тексту', 'leadforms-go'),
+			'before' => __('Перед текстом', 'leadforms-go'),
+		];
+
+		$html = '<details class="lfg-button-settings" data-lfg-button-settings><summary>' . esc_html__('Іконка кнопки', 'leadforms-go') . '</summary>';
+		$html .= '<div class="lfg-button-settings__grid">';
+		$html .= '<label><span>' . esc_html__('Тип іконки', 'leadforms-go') . '</span><select name="button_icon_type" data-lfg-button-icon-type>';
+		foreach ($types as $value => $label) {
+			$html .= '<option value="' . esc_attr($value) . '"' . selected($button_icon['type'], $value, false) . '>' . esc_html($label) . '</option>';
+		}
+		$html .= '</select></label>';
+		$html .= '<label><span>' . esc_html__('Позиція', 'leadforms-go') . '</span><select name="button_icon_position" data-lfg-button-icon-position>';
+		foreach ($positions as $value => $label) {
+			$html .= '<option value="' . esc_attr($value) . '"' . selected($button_icon['position'], $value, false) . '>' . esc_html($label) . '</option>';
+		}
+		$html .= '</select></label>';
+		$html .= '<label data-lfg-button-icon-panel="fontawesome"><span>' . esc_html__('Каталог Font Awesome', 'leadforms-go') . '</span><select data-lfg-fa-catalog><option value="">' . esc_html__('Виберіть іконку', 'leadforms-go') . '</option>';
+		foreach (self::fontawesome_catalog() as $class => $label) {
+			$html .= '<option value="' . esc_attr($class) . '"' . selected($button_icon['fa_class'], $class, false) . '>' . esc_html($label) . '</option>';
+		}
+		$html .= '</select><small>' . esc_html__('Font Awesome має бути підключений у темі або на сайті. Якщо потрібна іконка без залежностей — використайте SVG.', 'leadforms-go') . '</small></label>';
+		$html .= '<label data-lfg-button-icon-panel="fontawesome"><span>' . esc_html__('Клас Font Awesome', 'leadforms-go') . '</span><input type="text" name="button_icon_fa_class" value="' . esc_attr($button_icon['fa_class']) . '" placeholder="fa-solid fa-arrow-right" data-lfg-button-icon-fa><small>' . esc_html__('Можна вибрати з каталогу або вписати свій клас Font Awesome.', 'leadforms-go') . '</small></label>';
+		$html .= '<label class="lfg-button-settings__svg" data-lfg-button-icon-panel="svg"><span>' . esc_html__('SVG-код', 'leadforms-go') . '</span><textarea name="button_icon_svg" rows="6" data-lfg-button-icon-svg placeholder="<svg viewBox=&quot;0 0 24 24&quot;>...</svg>">' . esc_textarea($button_icon['svg']) . '</textarea><small>' . esc_html__('Вставляйте тільки сам SVG. Скрипти, стилі й небезпечні атрибути будуть видалені.', 'leadforms-go') . '</small></label>';
+		$html .= '</div></details>';
+		return $html;
+	}
+
+	private static function fontawesome_catalog(): array
+	{
+		return [
+			'fa-solid fa-arrow-right' => __('Стрілка вправо', 'leadforms-go'),
+			'fa-solid fa-paper-plane' => __('Паперовий літак', 'leadforms-go'),
+			'fa-solid fa-phone' => __('Телефон', 'leadforms-go'),
+			'fa-solid fa-envelope' => __('Конверт', 'leadforms-go'),
+			'fa-solid fa-check' => __('Галочка', 'leadforms-go'),
+			'fa-solid fa-circle-check' => __('Галочка в колі', 'leadforms-go'),
+			'fa-solid fa-chevron-right' => __('Шеврон вправо', 'leadforms-go'),
+			'fa-solid fa-calendar-days' => __('Календар', 'leadforms-go'),
+			'fa-solid fa-location-dot' => __('Мітка локації', 'leadforms-go'),
+			'fa-brands fa-telegram' => __('Telegram', 'leadforms-go'),
+		];
+	}
+
 	public function save_form(): void
 	{
 		$this->guard('leadforms_go_save_form');
@@ -260,6 +320,12 @@ final class Admin
 		$mode = isset($_POST['editor_mode']) && $_POST['editor_mode'] === 'visual' ? 'visual' : 'code';
 		$active = ! empty($_POST['active']);
 		$submit_label = sanitize_text_field(self::scalar_string($_POST['submit_label'] ?? '')) ?: __('Надіслати', 'leadforms-go');
+		$button_icon = Form_Builder::sanitize_button_icon([
+			'type' => self::scalar_string($_POST['button_icon_type'] ?? ''),
+			'position' => self::scalar_string($_POST['button_icon_position'] ?? ''),
+			'fa_class' => self::scalar_string($_POST['button_icon_fa_class'] ?? ''),
+			'svg' => self::scalar_string($_POST['button_icon_svg'] ?? ''),
+		]);
 		$default_locale = Form_Translations::normalize_locale(self::scalar_string($_POST['default_locale'] ?? '')) ?: Form_Translations::DEFAULT_LOCALE;
 		$raw_translations = isset($_POST['translations']) && is_string($_POST['translations']) ? json_decode(wp_unslash($_POST['translations']), true) : [];
 		$translations = Form_Translations::sanitize(is_array($raw_translations) ? $raw_translations : []);
@@ -273,13 +339,13 @@ final class Admin
 			$translations = Form_Translations::complete($translations, $schema);
 			$resolved = Form_Translations::resolve($translations, $default_locale, $default_locale);
 			$submit_label = (string) $resolved['submit_label'];
-			$code = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), $submit_label);
+			$code = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), $submit_label, '', $button_icon);
 		} else {
 			$code = Form_Builder::sanitize_code(self::scalar_string($_POST['code'] ?? ''));
 		}
 		if ($name === '' || $code === '') wp_die(esc_html__('Вкажіть назву та вміст форми.', 'leadforms-go'));
 		if ($id > 0 && Repositories::form($id) === null) wp_die(esc_html__('Форму не знайдено.', 'leadforms-go'), '', 404);
-		$result = Repositories::save_form($id, $name, $code, $mode, $schema, $submit_label, $default_locale, $translations, $active);
+		$result = Repositories::save_form($id, $name, $code, $mode, $schema, $submit_label, $default_locale, $translations, $active, $button_icon);
 		if ($result === false) wp_die(esc_html__('Не вдалося зберегти форму.', 'leadforms-go'));
 		wp_safe_redirect(admin_url('admin.php?page=leadforms-go-forms&id=' . $result . '&updated=1')); exit;
 	}
@@ -365,6 +431,7 @@ final class Admin
 
 	public function legacy_notice(): void
 	{
+		if (! current_user_can('manage_options')) return;
 		$active = (array) get_option('active_plugins', []);
 		$legacy = array_intersect($active, ['reIntegration/reIntegration.php', 'reIntegrationSheets/reIntegrationSheets.php', 'reIntegrationTelegram/reIntegrationTelegram.php', 'reIntegrationCRM/reIntegrationCRM.php']);
 		if ($legacy) echo '<div class="notice notice-warning"><p>' . esc_html__('LeadForms Go імпортував старі дані. Вимкніть старі плагіни reIntegration, щоб уникнути дублювання обробників.', 'leadforms-go') . '</p></div>';
@@ -535,8 +602,17 @@ final class Admin
 
 	private function guard(string $action, string $field = '_wpnonce'): void
 	{
-		if (! current_user_can('manage_options')) wp_die(esc_html__('Недостатньо прав.', 'leadforms-go'), '', 403);
+		$this->require_capability('manage_options');
+		if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') {
+			if (wp_doing_ajax()) wp_send_json_error(['message' => __('Некоректний метод запиту.', 'leadforms-go')], 405);
+			wp_die(esc_html__('Некоректний метод запиту.', 'leadforms-go'), '', 405);
+		}
 		if ($field === '_wpnonce') check_admin_referer($action); elseif (! check_ajax_referer($action, $field, false)) wp_send_json_error(['message' => __('Некоректний запит.', 'leadforms-go')], 403);
+	}
+
+	private function require_capability(string $capability): void
+	{
+		if (! current_user_can($capability)) wp_die(esc_html__('Недостатньо прав.', 'leadforms-go'), '', 403);
 	}
 	private function open(string $title): void { echo '<div class="wrap leadforms-go-admin"><h1>' . esc_html($title) . '</h1>'; }
 	private function close(): void { echo '</div>'; }
