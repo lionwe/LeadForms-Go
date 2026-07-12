@@ -25,6 +25,11 @@ class LeadFormsGoAdmin {
 		this.canvas = document.querySelector('[data-lfg-canvas]');
 		this.codeInput = document.querySelector('[data-lfg-code]');
 		this.submitLabelInput = document.querySelector('[name="submit_label"]');
+		this.buttonIconType = document.querySelector('[data-lfg-button-icon-type]');
+		this.buttonIconPosition = document.querySelector('[data-lfg-button-icon-position]');
+		this.buttonIconFa = document.querySelector('[data-lfg-button-icon-fa]');
+		this.buttonIconSvg = document.querySelector('[data-lfg-button-icon-svg]');
+		this.faCatalog = document.querySelector('[data-lfg-fa-catalog]');
 		this.translationsInput = document.querySelector('[data-lfg-translations]');
 		this.defaultLocaleInput = document.querySelector('[data-lfg-default-locale]');
 		this.preview = document.querySelector('[data-lfg-preview]');
@@ -44,6 +49,24 @@ class LeadFormsGoAdmin {
 			this.ensureTranslation(this.currentLocale).submit_label = this.submitLabelInput.value;
 			this.syncTranslations(); this.syncCodePreview(); this.renderPreview(); this.updateLocaleProgress();
 		});
+		[this.buttonIconType, this.buttonIconPosition, this.buttonIconFa, this.buttonIconSvg].forEach((input) => {
+			input?.addEventListener('input', () => {
+				this.updateButtonIconPanels();
+				this.syncCodePreview();
+				this.renderPreview();
+			});
+			input?.addEventListener('change', () => {
+				this.updateButtonIconPanels();
+				this.syncCodePreview();
+				this.renderPreview();
+			});
+		});
+		this.faCatalog?.addEventListener('change', () => {
+			if (this.faCatalog.value && this.buttonIconFa) this.buttonIconFa.value = this.faCatalog.value;
+			this.syncCodePreview();
+			this.renderPreview();
+		});
+		this.updateButtonIconPanels();
 		this.defaultLocaleInput?.addEventListener('change', () => { this.updateLocaleProgress(); this.syncCodePreview(); });
 	}
 
@@ -199,6 +222,65 @@ class LeadFormsGoAdmin {
 		});
 	}
 
+	buttonIcon() {
+		const type = this.buttonIconType?.value || 'none';
+		const position = this.buttonIconPosition?.value === 'before' ? 'before' : 'after';
+		const faClass = (this.buttonIconFa?.value || '').trim().split(/\s+/).filter((token) => /^(fa|fas|far|fab|fal|fa-[a-z0-9-]+)$/i.test(token)).slice(0, 6).join(' ');
+		const svg = (this.buttonIconSvg?.value || '').trim();
+		const hasFaIcon = faClass.split(/\s+/).some((token) => token.startsWith('fa-') && !['fa-solid', 'fa-regular', 'fa-brands'].includes(token));
+		if (type === 'fontawesome' && faClass && hasFaIcon) return { type, position, faClass, svg: '' };
+		if (type === 'svg' && svg) return { type, position, faClass: '', svg };
+		return { type: 'none', position, faClass: '', svg: '' };
+	}
+
+	updateButtonIconPanels() {
+		const type = this.buttonIconType?.value || 'none';
+		document.querySelectorAll('[data-lfg-button-icon-panel]').forEach((panel) => {
+			panel.hidden = panel.dataset.lfgButtonIconPanel !== type;
+		});
+	}
+
+	createButtonIconElement() {
+		const icon = this.buttonIcon();
+		if (icon.type === 'fontawesome' && icon.faClass) {
+			const wrapper = document.createElement('span');
+			wrapper.className = 'btn__icon leadforms-go-button__icon leadforms-go-button__icon--fontawesome';
+			wrapper.setAttribute('aria-hidden', 'true');
+			const element = document.createElement('i');
+			element.className = icon.faClass;
+			wrapper.append(element);
+			return wrapper;
+		}
+		if (icon.type === 'svg' && icon.svg) {
+			const svg = this.safeSvgElement(icon.svg);
+			if (!svg) return null;
+			const wrapper = document.createElement('span');
+			wrapper.className = 'btn__icon leadforms-go-button__icon leadforms-go-button__icon--svg';
+			wrapper.setAttribute('aria-hidden', 'true');
+			wrapper.append(svg);
+			return wrapper;
+		}
+		return null;
+	}
+
+	safeSvgElement(value) {
+		const doc = new DOMParser().parseFromString(value, 'image/svg+xml');
+		const svg = doc.querySelector('svg');
+		if (!svg || doc.querySelector('parsererror, script, foreignObject')) return null;
+		const allowedTags = new Set(['svg', 'g', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon']);
+		const allowedAttrs = new Set(['class', 'aria-hidden', 'focusable', 'height', 'role', 'viewBox', 'viewbox', 'width', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'xmlns', 'transform', 'd', 'cx', 'cy', 'r', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'rx', 'ry', 'points']);
+		[...svg.querySelectorAll('*'), svg].forEach((node) => {
+			if (!allowedTags.has(node.tagName)) {
+				node.remove();
+				return;
+			}
+			[...node.attributes].forEach((attribute) => {
+				if (!allowedAttrs.has(attribute.name)) node.removeAttribute(attribute.name);
+			});
+		});
+		return document.importNode(svg, true);
+	}
+
 	renderPreview() {
 		if (!this.preview) return;
 		this.preview.replaceChildren();
@@ -212,7 +294,14 @@ class LeadFormsGoAdmin {
 			label.append(span, input); this.preview.append(label);
 		});
 		const button = document.createElement('button'); button.type = 'button'; button.className = 'button button-primary'; button.disabled = true;
-		button.textContent = this.submitLabelInput?.value || 'Надіслати'; this.preview.append(button);
+		const icon = this.createButtonIconElement();
+		const text = document.createElement('span');
+		text.className = 'btn__text';
+		text.textContent = this.submitLabelInput?.value || 'Надіслати';
+		if (icon && this.buttonIcon().position === 'before') button.append(icon);
+		button.append(text);
+		if (icon && this.buttonIcon().position === 'after') button.append(icon);
+		this.preview.append(button);
 	}
 
 	updateLocaleProgress() {
@@ -299,6 +388,18 @@ class LeadFormsGoAdmin {
 		if (this.codeInput && this.schema.length) this.codeInput.value = this.generateCode();
 	}
 
+	buttonIconMarkupForCode() {
+		const escape = (value) => String(value || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+		const icon = this.buttonIcon();
+		if (icon.type === 'fontawesome' && icon.faClass) {
+			return `    <span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--fontawesome" aria-hidden="true"><i class="${escape(icon.faClass)}"></i></span>`;
+		}
+		if (icon.type === 'svg' && icon.svg) {
+			return `    <span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--svg" aria-hidden="true">${icon.svg}</span>`;
+		}
+		return '';
+	}
+
 	generateCode() {
 		const escape = (value) => String(value || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 		const counts = {};
@@ -328,7 +429,11 @@ class LeadFormsGoAdmin {
 		});
 		lines.push('  <button class="btn btn--primary" type="submit">');
 		const primary = this.ensureTranslation(this.defaultLocaleInput?.value || this.currentLocale);
+		const buttonIcon = this.buttonIcon();
+		const buttonIconMarkup = this.buttonIconMarkupForCode();
+		if (buttonIcon.position === 'before' && buttonIconMarkup) lines.push(buttonIconMarkup);
 		lines.push(`    <span class="btn__text">${escape(primary.submit_label || this.submitLabelInput?.value || 'Надіслати')}</span>`);
+		if (buttonIcon.position === 'after' && buttonIconMarkup) lines.push(buttonIconMarkup);
 		lines.push('  </button>');
 		lines.push('</form>');
 		return lines.join('\n');

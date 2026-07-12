@@ -64,6 +64,41 @@ final class Form_Builder
 		return $clean;
 	}
 
+	public static function sanitize_button_icon(mixed $icon): array
+	{
+		if (! is_array($icon)) {
+			return ['type' => 'none', 'position' => 'after', 'fa_class' => '', 'svg' => ''];
+		}
+
+		$type = sanitize_key((string) ($icon['type'] ?? 'none'));
+		if (! in_array($type, ['none', 'svg', 'fontawesome'], true)) {
+			$type = 'none';
+		}
+
+		$position = sanitize_key((string) ($icon['position'] ?? 'after'));
+		if (! in_array($position, ['before', 'after'], true)) {
+			$position = 'after';
+		}
+
+		$fa_class = self::sanitize_fontawesome_class((string) ($icon['fa_class'] ?? ''));
+		$svg = self::sanitize_svg((string) ($icon['svg'] ?? ''));
+
+		if ($type === 'fontawesome' && $fa_class === '') {
+			$type = 'none';
+		}
+
+		if ($type === 'svg' && $svg === '') {
+			$type = 'none';
+		}
+
+		return [
+			'type' => $type,
+			'position' => $position,
+			'fa_class' => $type === 'fontawesome' ? $fa_class : '',
+			'svg' => $type === 'svg' ? $svg : '',
+		];
+	}
+
 	public static function duplicate_names(array $schema): array
 	{
 		$seen = [];
@@ -91,11 +126,13 @@ final class Form_Builder
 		return is_string($result) ? $result : $code;
 	}
 
-	public static function render(array $schema, string $submit_label, string $instance = ''): string
+	public static function render(array $schema, string $submit_label, string $instance = '', array $button_icon = []): string
 	{
 		$submit_label = sanitize_text_field($submit_label) ?: __('Надіслати', 'leadforms-go');
 		$instance = sanitize_html_class($instance);
 		$id_prefix = $instance === '' ? 'lfg-' : 'lfg-' . $instance . '-';
+		$button_icon = self::sanitize_button_icon($button_icon);
+		$icon_markup = self::button_icon_markup($button_icon);
 		$lines = ['<form method="post" action="">'];
 		foreach ($schema as $field) {
 			$id = $id_prefix . sanitize_html_class($field['id']);
@@ -119,10 +156,75 @@ final class Form_Builder
 			$lines[] = '  </label>';
 		}
 		$lines[] = '  <button class="btn btn--primary" type="submit">';
+		if ($button_icon['position'] === 'before' && $icon_markup !== '') {
+			$lines[] = '    ' . $icon_markup;
+		}
 		$lines[] = '    <span class="btn__text">' . esc_html($submit_label) . '</span>';
+		if ($button_icon['position'] === 'after' && $icon_markup !== '') {
+			$lines[] = '    ' . $icon_markup;
+		}
 		$lines[] = '  </button>';
 		$lines[] = '</form>';
 		return implode("\n", $lines);
+	}
+
+	private static function button_icon_markup(array $button_icon): string
+	{
+		if ($button_icon['type'] === 'fontawesome' && $button_icon['fa_class'] !== '') {
+			return '<span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--fontawesome" aria-hidden="true"><i class="' . esc_attr($button_icon['fa_class']) . '"></i></span>';
+		}
+
+		if ($button_icon['type'] === 'svg' && $button_icon['svg'] !== '') {
+			return '<span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--svg" aria-hidden="true">' . $button_icon['svg'] . '</span>';
+		}
+
+		return '';
+	}
+
+	private static function sanitize_fontawesome_class(string $class): string
+	{
+		$tokens = preg_split('/\s+/', trim($class)) ?: [];
+		$allowed = [];
+		foreach ($tokens as $token) {
+			$token = sanitize_html_class($token);
+			if ($token === '') {
+				continue;
+			}
+			if (in_array($token, ['fa', 'fas', 'far', 'fab', 'fal', 'fa-solid', 'fa-regular', 'fa-brands'], true) || str_starts_with($token, 'fa-')) {
+				$allowed[] = $token;
+			}
+		}
+		$allowed = array_values(array_unique(array_slice($allowed, 0, 6)));
+		$has_icon = (bool) array_filter($allowed, static fn (string $token): bool => str_starts_with($token, 'fa-') && ! in_array($token, ['fa-solid', 'fa-regular', 'fa-brands'], true));
+		if (! $has_icon) {
+			return '';
+		}
+		if (! array_intersect($allowed, ['fa', 'fas', 'far', 'fab', 'fal', 'fa-solid', 'fa-regular', 'fa-brands'])) {
+			array_unshift($allowed, 'fa-solid');
+		}
+		return implode(' ', $allowed);
+	}
+
+	private static function sanitize_svg(string $svg): string
+	{
+		$svg = trim($svg);
+		if ($svg === '' || stripos($svg, '<svg') === false || strlen($svg) > 8000) {
+			return '';
+		}
+
+		$allowed = [
+			'svg' => ['class' => true, 'aria-hidden' => true, 'focusable' => true, 'height' => true, 'role' => true, 'viewbox' => true, 'viewBox' => true, 'width' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'xmlns' => true],
+			'g' => ['fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'transform' => true],
+			'path' => ['d' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'transform' => true],
+			'circle' => ['cx' => true, 'cy' => true, 'r' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true],
+			'rect' => ['x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'ry' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true],
+			'line' => ['x1' => true, 'x2' => true, 'y1' => true, 'y2' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true],
+			'polyline' => ['points' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true],
+			'polygon' => ['points' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true],
+		];
+
+		$clean = wp_kses($svg, $allowed);
+		return str_contains(strtolower($clean), '<svg') ? $clean : '';
 	}
 
 	private static function allowed_html(): array
@@ -151,6 +253,16 @@ final class Form_Builder
 		$tags['select'] = $common + ['name' => true, 'required' => true, 'disabled' => true, 'multiple' => true];
 		$tags['option'] = ['value' => true, 'selected' => true, 'disabled' => true];
 		$tags['button'] = $common + ['type' => true, 'name' => true, 'value' => true, 'disabled' => true];
+		$tags['span'] = $common + ['aria-hidden' => true];
+		$tags['i'] = ['class' => true, 'aria-hidden' => true];
+		$tags['svg'] = ['class' => true, 'aria-hidden' => true, 'focusable' => true, 'height' => true, 'role' => true, 'viewbox' => true, 'viewBox' => true, 'width' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'xmlns' => true];
+		$tags['g'] = ['fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'transform' => true];
+		$tags['path'] = ['d' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true, 'transform' => true];
+		$tags['circle'] = ['cx' => true, 'cy' => true, 'r' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true];
+		$tags['rect'] = ['x' => true, 'y' => true, 'width' => true, 'height' => true, 'rx' => true, 'ry' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true];
+		$tags['line'] = ['x1' => true, 'x2' => true, 'y1' => true, 'y2' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true];
+		$tags['polyline'] = ['points' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true];
+		$tags['polygon'] = ['points' => true, 'fill' => true, 'stroke' => true, 'stroke-width' => true, 'stroke-linecap' => true, 'stroke-linejoin' => true];
 		return $tags;
 	}
 }

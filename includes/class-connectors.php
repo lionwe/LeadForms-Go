@@ -29,6 +29,7 @@ final class Connectors
 abstract class Abstract_Connector implements Connector_Interface
 {
 	protected const REQUEST_TIMEOUT = 12;
+	protected const RESPONSE_SIZE_LIMIT = 262144;
 
 	protected function settings(): array { return Settings::section($this->key()); }
 	public function is_enabled(): bool { return ! empty($this->settings()['enabled']); }
@@ -59,6 +60,8 @@ final class Telegram_Connector extends Abstract_Connector
 		$s = $this->settings();
 		return $this->result(wp_remote_post('https://api.telegram.org/bot' . rawurlencode($s['token']) . '/getChat', [
 			'timeout' => self::REQUEST_TIMEOUT,
+			'redirection' => 0,
+			'limit_response_size' => self::RESPONSE_SIZE_LIMIT,
 			'body' => ['chat_id' => $s['chat_id']],
 		]));
 	}
@@ -76,7 +79,7 @@ final class Telegram_Connector extends Abstract_Connector
 		if ((function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text)) > 4000) {
 			$text = (function_exists('mb_substr') ? mb_substr($text, 0, 3997, 'UTF-8') : substr($text, 0, 3997)) . '…';
 		}
-		$response = wp_remote_post('https://api.telegram.org/bot' . rawurlencode($s['token']) . '/sendMessage', ['timeout' => self::REQUEST_TIMEOUT, 'body' => ['chat_id' => $s['chat_id'], 'text' => $text]]);
+		$response = wp_remote_post('https://api.telegram.org/bot' . rawurlencode($s['token']) . '/sendMessage', ['timeout' => self::REQUEST_TIMEOUT, 'redirection' => 0, 'limit_response_size' => self::RESPONSE_SIZE_LIMIT, 'body' => ['chat_id' => $s['chat_id'], 'text' => $text]]);
 		$body = is_wp_error($response) ? [] : json_decode(wp_remote_retrieve_body($response), true);
 		$message_id = is_array($body) ? absint($body['result']['message_id'] ?? 0) : 0;
 		$chat_id = is_array($body) ? (string) ($body['result']['chat']['id'] ?? '') : '';
@@ -105,7 +108,7 @@ final class Sheets_Connector extends Abstract_Connector
 		if (is_wp_error($token)) return new Result(false, 0, $token->get_error_message(), $this->token_error_is_retryable($token));
 		$s = $this->settings();
 		$url = 'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($s['spreadsheet_id']) . '?fields=spreadsheetId';
-		return $this->result(wp_remote_get($url, ['timeout' => self::REQUEST_TIMEOUT, 'headers' => ['Authorization' => 'Bearer ' . $token]]));
+		return $this->result(wp_remote_get($url, ['timeout' => self::REQUEST_TIMEOUT, 'redirection' => 0, 'limit_response_size' => self::RESPONSE_SIZE_LIMIT, 'headers' => ['Authorization' => 'Bearer ' . $token]]));
 	}
 	public function send(array $data, string $referer): Result
 	{
@@ -119,7 +122,7 @@ final class Sheets_Connector extends Abstract_Connector
 		$values[] = $referer;
 		$range = rawurlencode($s['sheet_name'] . '!A1');
 		$url = 'https://sheets.googleapis.com/v4/spreadsheets/' . rawurlencode($s['spreadsheet_id']) . '/values/' . $range . ':append?valueInputOption=RAW';
-		$response = wp_remote_post($url, ['timeout' => self::REQUEST_TIMEOUT, 'headers' => ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'], 'body' => wp_json_encode(['values' => [$values]])]);
+		$response = wp_remote_post($url, ['timeout' => self::REQUEST_TIMEOUT, 'redirection' => 0, 'limit_response_size' => self::RESPONSE_SIZE_LIMIT, 'headers' => ['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'], 'body' => wp_json_encode(['values' => [$values]])]);
 		$reference = 'https://docs.google.com/spreadsheets/d/' . rawurlencode($s['spreadsheet_id']) . '/edit';
 		return $this->result($response, $reference);
 	}
@@ -145,7 +148,7 @@ final class Sheets_Connector extends Abstract_Connector
 		$unsigned = $encode(['alg' => 'RS256', 'typ' => 'JWT']) . '.' . $encode(['iss' => $credentials['client_email'], 'scope' => 'https://www.googleapis.com/auth/spreadsheets', 'aud' => $token_uri, 'iat' => $now, 'exp' => $now + 3600]);
 		if (! openssl_sign($unsigned, $signature, $credentials['private_key'], OPENSSL_ALGO_SHA256)) return new \WP_Error('signing_failed', __('Не вдалося підписати запит авторизації Google.', 'leadforms-go'));
 		$jwt = $unsigned . '.' . rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
-		$response = wp_remote_post($token_uri, ['timeout' => self::REQUEST_TIMEOUT, 'body' => ['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $jwt]]);
+		$response = wp_remote_post($token_uri, ['timeout' => self::REQUEST_TIMEOUT, 'redirection' => 0, 'limit_response_size' => self::RESPONSE_SIZE_LIMIT, 'body' => ['grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion' => $jwt]]);
 		if (is_wp_error($response)) return new \WP_Error('token_transport_failed', __('Не вдалося з’єднатися з Google.', 'leadforms-go'));
 		$body = json_decode(wp_remote_retrieve_body($response), true);
 		if (wp_remote_retrieve_response_code($response) !== 200 || empty($body['access_token'])) return new \WP_Error('token_failed', __('Не вдалося авторизуватися в Google.', 'leadforms-go'));
@@ -185,7 +188,7 @@ final class Crm_Connector extends Abstract_Connector
 		}
 		if ($referer !== '') $notes[] = __('Джерело:', 'leadforms-go') . ' ' . sanitize_url($referer);
 		$body = ['action' => 'partner-custom-form', 'partner_id' => $s['partner_id'], 'token' => $s['token'], 'adv_id' => $s['adv_id'], 'name' => implode(' ', array_filter($name_parts)), 'phone' => $phone, 'note' => implode("\n", $notes)];
-		$response = wp_remote_post('https://crm.g-plus.app/api/actions', ['timeout' => self::REQUEST_TIMEOUT, 'sslverify' => true, 'body' => $body]);
+		$response = wp_remote_post('https://crm.g-plus.app/api/actions', ['timeout' => self::REQUEST_TIMEOUT, 'redirection' => 0, 'limit_response_size' => self::RESPONSE_SIZE_LIMIT, 'sslverify' => true, 'body' => $body]);
 		$response_body = is_wp_error($response) ? [] : json_decode(wp_remote_retrieve_body($response), true);
 		$external_id = is_array($response_body) ? sanitize_text_field((string) ($response_body['lead_id'] ?? $response_body['id'] ?? $response_body['data']['id'] ?? '')) : '';
 		return $this->result($response, $external_id !== '' ? 'lead:' . $external_id : '');

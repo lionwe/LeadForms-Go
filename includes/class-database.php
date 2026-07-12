@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.4.3';
+	private const SCHEMA_VERSION = '1.4.4';
 
 	public static function tables(): array
 	{
@@ -49,6 +49,7 @@ final class Database
 			editor_mode varchar(20) NOT NULL DEFAULT 'code',
 			form_schema longtext NOT NULL,
 			submit_label varchar(120) NOT NULL DEFAULT 'Надіслати',
+			button_icon longtext NOT NULL,
 			default_locale varchar(20) NOT NULL DEFAULT 'uk_UA',
 			translations longtext NOT NULL,
 			active tinyint(1) unsigned NOT NULL DEFAULT 1,
@@ -135,7 +136,7 @@ final class Database
 		global $wpdb;
 		$table = self::tables()['forms'];
 		if (! self::table_exists($table)) return;
-		$rows = $wpdb->get_results("SELECT id, editor_mode, form_schema, submit_label, default_locale, translations FROM {$table}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results("SELECT id, editor_mode, form_schema, submit_label, button_icon, default_locale, translations FROM {$table}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		foreach ($rows ?: [] as $row) {
 			$schema = json_decode((string) $row['form_schema'], true);
 			$schema = Form_Builder::sanitize_schema(is_array($schema) ? $schema : []);
@@ -150,8 +151,9 @@ final class Database
 			$formats = ['%s', '%s'];
 			if (($row['editor_mode'] ?? '') === 'visual' && $schema !== []) {
 				$resolved = Form_Translations::resolve($translations, $locale, $locale);
+				$button_icon = json_decode((string) ($row['button_icon'] ?? ''), true);
 				$data['form_schema'] = (string) wp_json_encode($schema, JSON_UNESCAPED_UNICODE);
-				$data['code'] = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), (string) $resolved['submit_label']);
+				$data['code'] = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), (string) $resolved['submit_label'], '', Form_Builder::sanitize_button_icon(is_array($button_icon) ? $button_icon : []));
 				$formats[] = '%s';
 				$formats[] = '%s';
 			}
@@ -174,7 +176,7 @@ final class Database
 			$rows = $wpdb->get_results("SELECT id, name, code FROM {$legacy_forms}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			foreach ($rows as $row) {
 				$wpdb->query($wpdb->prepare(
-					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, default_locale, translations, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, 'uk_UA', '{}', %d, %s, %s)",
+					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, button_icon, default_locale, translations, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, '{}', 'uk_UA', '{}', %d, %s, %s)",
 					(string) $row['name'], Form_Builder::sanitize_code((string) $row['code']), __('Надіслати', 'leadforms-go'), (int) $row['id'], current_time('mysql'), current_time('mysql')
 				));
 			}

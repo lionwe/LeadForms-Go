@@ -1,2 +1,3 @@
 .leadforms-go-form__status:empty{display:none}
 .leadforms-go-form__honeypot{position:absolute!important;left:-10000rem!important;width:.0625rem!important;height:.0625rem!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+.leadforms-go-button__icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}.leadforms-go-button__icon svg{display:block;width:1em;height:1em}
