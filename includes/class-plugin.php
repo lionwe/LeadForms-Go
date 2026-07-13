@@ -10,7 +10,10 @@ final class Plugin
 	private ?Delivery_Queue $queue = null;
 	private bool $frontend_configured = false;
 	private int $form_instance = 0;
-	public static function instance(): self { return self::$instance ??= new self(); }
+	public static function instance(): self
+	{
+		return self::$instance ??= new self();
+	}
 
 	public function boot(): void
 	{
@@ -31,8 +34,8 @@ final class Plugin
 
 	public function shortcodes(): void
 	{
-		add_shortcode('leadforms_go_form', fn (mixed $atts): string => $this->render(is_array($atts) ? $atts : [], false));
-		add_shortcode('reintegration_form', fn (mixed $atts): string => $this->render(is_array($atts) ? $atts : [], true));
+		add_shortcode('leadforms_go_form', fn(mixed $atts): string => $this->render(is_array($atts) ? $atts : [], false));
+		add_shortcode('reintegration_form', fn(mixed $atts): string => $this->render(is_array($atts) ? $atts : [], true));
 	}
 
 	public function register_assets(): void
@@ -84,7 +87,7 @@ final class Plugin
 		if ($this->frontend_configured) return;
 		$this->frontend_configured = true;
 		$config = wp_json_encode([
-			'ajaxUrl' => admin_url('admin-ajax.php'),
+			'ajaxUrl' => wp_make_link_relative(admin_url('admin-ajax.php')),
 			'successDuration' => 4000,
 			'requestTimeout' => 20000,
 			'attributionTtl' => (int) (Settings::section('general')['attribution_days'] ?? 30) * DAY_IN_SECONDS,

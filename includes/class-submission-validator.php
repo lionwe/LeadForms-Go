@@ -46,6 +46,17 @@ final class Submission_Validator
 		return $clean;
 	}
 
+	public static function schema_for_code(string $code): array
+	{
+		$schema = [];
+		foreach (self::code_fields($code) as $field) {
+			$key = sanitize_key((string) $field['name']);
+			if ($key === '') continue;
+			$schema[] = ['id' => str_replace('_', '-', $key), 'key' => $key, 'name' => $key, 'type' => $field['type'], 'label' => $field['name'], 'placeholder' => '', 'required' => $field['required'], 'mask' => ''];
+		}
+		return $schema;
+	}
+
 	/**
 	 * @return array{data: array<string, string>, errors: array<string, string>}
 	 */

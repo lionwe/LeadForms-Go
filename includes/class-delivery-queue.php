@@ -38,10 +38,24 @@ final class Delivery_Queue
 	{
 		$count = 0;
 		$enabled = 0;
+		$submission = Repositories::submission($submission_id);
+		$form = is_array($submission) && ! empty($submission['form_id']) ? Repositories::form((int) $submission['form_id']) : null;
+		$config = Route_Config::for_form($form);
+		$context = [
+			'form_name' => is_array($form) ? (string) ($form['name'] ?? '') : '',
+			'submitted_at' => is_array($submission) ? (string) ($submission['created_at'] ?? '') : '',
+		];
 		foreach (Connectors::all() as $connector) {
-			if (! $connector->is_enabled()) continue;
+			if (! in_array($connector->key(), ['telegram', 'sheets', 'crm'], true)) {
+				if (! $connector->is_enabled()) continue;
+				++$enabled;
+				$count += Repositories::create_delivery($submission_id, $connector->key()) > 0 ? 1 : 0;
+				continue;
+			}
+			$route = is_array($config[$connector->key()] ?? null) ? $config[$connector->key()] : [];
+			if (! Route_Config::is_enabled($connector->key(), $route)) continue;
 			++$enabled;
-			$count += Repositories::create_delivery($submission_id, $connector->key()) > 0 ? 1 : 0;
+			$count += Repositories::create_delivery($submission_id, $connector->key(), Route_Config::snapshot($config, $connector->key(), $context)) > 0 ? 1 : 0;
 		}
 		if ($count === 0) {
 			Repositories::finish_submission($submission_id, $enabled === 0);
@@ -53,6 +67,26 @@ final class Delivery_Queue
 		Repositories::sync_submission_status($submission_id);
 		$this->schedule(true);
 		return $count;
+	}
+
+	public function queue_test_submission(int $submission_id, string $connector, array $config): int
+	{
+		$connector = sanitize_key($connector);
+		if (! isset(Connectors::all()[$connector])) return 0;
+		$submission = Repositories::submission($submission_id);
+		$form = is_array($submission) && ! empty($submission['form_id']) ? Repositories::form((int) $submission['form_id']) : null;
+		$context = [
+			'form_name' => is_array($form) ? (string) ($form['name'] ?? '') : '',
+			'submitted_at' => is_array($submission) ? (string) ($submission['created_at'] ?? '') : '',
+		];
+		$delivery_id = Repositories::create_delivery($submission_id, $connector, Route_Config::snapshot($config, $connector, $context));
+		if ($delivery_id <= 0) return 0;
+		update_option(self::PENDING_OPTION, 1, false);
+		$this->pending = true;
+		$this->queued_in_request = true;
+		Repositories::sync_submission_status($submission_id);
+		$this->schedule(true);
+		return $delivery_id;
 	}
 
 	public function process(string $source = 'cron'): void
@@ -67,7 +101,12 @@ final class Delivery_Queue
 				$delivery_id = (int) $delivery['id'];
 				if (! Repositories::claim_delivery($delivery_id)) continue;
 				$key = sanitize_key((string) $delivery['connector']);
-				if (! isset($connectors[$key]) || ! $connectors[$key]->is_enabled()) {
+				$snapshot = json_decode((string) ($delivery['route_snapshot'] ?? ''), true);
+				$snapshot = is_array($snapshot) ? $snapshot : [];
+				$route = Route_Config::route_from_snapshot($snapshot, $key);
+				$legacy_delivery = $snapshot === [];
+				$enabled = $legacy_delivery ? (isset($connectors[$key]) && $connectors[$key]->is_enabled()) : Route_Config::is_enabled($key, $route);
+				if (! isset($connectors[$key]) || ! $enabled) {
 					Repositories::cancel_delivery($delivery_id, __('Інтеграція вимкнена або недоступна.', 'leadforms-go'));
 					continue;
 				}
@@ -76,11 +115,20 @@ final class Delivery_Queue
 					Repositories::cancel_delivery($delivery_id, __('Дані заявки пошкоджені.', 'leadforms-go'));
 					continue;
 				}
-				$connector_payload = $key === 'telegram'
-					? Submission_Presenter::for_telegram($payload, (int) $delivery['form_id'], (string) ($delivery['locale'] ?? ''))
-					: $payload;
 				try {
-					$result = $connectors[$key]->send($connector_payload, (string) $delivery['referer']);
+					if ($connectors[$key] instanceof Contextual_Connector_Interface) {
+						$result = $connectors[$key]->send_request(new Delivery_Request(
+							$delivery_id,
+							(int) $delivery['submission_id'],
+							(int) $delivery['form_id'],
+							(string) ($delivery['locale'] ?? ''),
+							$payload,
+							(string) $delivery['referer'],
+							$route
+						));
+					} else {
+						$result = $connectors[$key]->send($payload, (string) $delivery['referer']);
+					}
 				} catch (\Throwable) {
 					$result = new Result(false, 0, __('Під час доставки сталася внутрішня помилка.', 'leadforms-go'), true);
 				}

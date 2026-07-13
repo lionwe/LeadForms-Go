@@ -28,6 +28,12 @@ For production sites with low traffic or `DISABLE_WP_CRON` enabled, configure a 
 
 If the WP-Cron loopback request fails, an overdue delivery can be processed by a server-side fallback at the end of a later WordPress request. The fallback processes one delivery per request and uses the same queue lock and atomic claim as WP-Cron. A real system cron remains recommended for sites without regular traffic.
 
+## Per-form integrations
+
+Each form has an Integrations tab for Telegram, Google Sheets, and CRM routes. A route can inherit the global connection, override its destination, or be disabled for that form. New delivery jobs store a versioned route snapshot, so retries keep the original template and mapping.
+
+Telegram supports localized plain text, HTML, and MarkdownV2 templates, topics, and up to five inline buttons per locale. Google Sheets supports sheet discovery, sheet creation, visual column mapping, raw append, and exact email or phone update-or-append. Route tests create diagnostic submissions that are excluded from dashboard statistics.
+
 ## Security
 
 Public submissions use a per-form nonce, signed render context, honeypot, atomic IP/global rate limits, and a unique request ID. Google Sheets stores visitor input as raw values so formulas are not evaluated.

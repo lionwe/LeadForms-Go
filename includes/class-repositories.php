@@ -8,31 +8,21 @@ final class Repositories
 {
 	public static function forms(): array
 	{
-		global $wpdb;
-		$table = Database::tables()['forms'];
-		return $wpdb->get_results("SELECT * FROM {$table} ORDER BY id DESC", ARRAY_A) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return (new Form_Repository())->all();
 	}
 
 	public static function form_summaries(): array
 	{
-		global $wpdb;
-		$table = Database::tables()['forms'];
-		return $wpdb->get_results("SELECT id, name, editor_mode, active, legacy_id, updated_at FROM {$table} ORDER BY id DESC", ARRAY_A) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		return (new Form_Repository())->summaries();
 	}
 
 	public static function form(int $id, bool $legacy = false): ?array
 	{
-		global $wpdb;
-		$table = Database::tables()['forms'];
-		$column = $legacy ? 'legacy_id' : 'id';
-		$row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE {$column} = %d", $id), ARRAY_A);
-		return is_array($row) ? $row : null;
+		return (new Form_Repository())->find($id, $legacy);
 	}
 
-	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = []): int|false
+	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = [], array $routing_config = []): int|false
 	{
-		global $wpdb;
-		$table = Database::tables()['forms'];
 		$now = current_time('mysql');
 		$data = [
 			'name' => $name,
@@ -43,44 +33,23 @@ final class Repositories
 			'button_icon' => wp_json_encode(Form_Builder::sanitize_button_icon($button_icon), JSON_UNESCAPED_UNICODE),
 			'default_locale' => Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE,
 			'translations' => wp_json_encode(Form_Translations::sanitize($translations), JSON_UNESCAPED_UNICODE),
+			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema), JSON_UNESCAPED_UNICODE),
+			'routing_version' => Route_Config::VERSION,
 			'active' => $active ? 1 : 0,
 			'updated_at' => $now,
 		];
-		if ($id > 0) {
-			$result = $wpdb->update($table, $data, ['id' => $id], ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'], ['%d']);
-			return $result === false ? false : $id;
-		}
-		$data['created_at'] = $now;
-		$result = $wpdb->insert($table, $data, ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']);
-		return $result ? (int) $wpdb->insert_id : false;
+		return (new Form_Repository())->save($id, $data);
 	}
 
 	public static function delete_form(int $id): bool
 	{
-		global $wpdb;
-		return $wpdb->delete(Database::tables()['forms'], ['id' => $id], ['%d']) !== false;
+		return (new Form_Repository())->delete($id);
 	}
 
 	/** @return array{id:int, created:bool} */
-	public static function create_submission(?int $form_id, array $payload, string $referer, string $locale, string $request_id): array
+	public static function create_submission(?int $form_id, array $payload, string $referer, string $locale, string $request_id, bool $is_test = false): array
 	{
-		global $wpdb;
-		$encoded = wp_json_encode($payload, JSON_UNESCAPED_UNICODE);
-		if (! is_string($encoded)) return ['id' => 0, 'created' => false];
-		$table = Database::tables()['submissions'];
-		$inserted = $wpdb->query($wpdb->prepare(
-			"INSERT IGNORE INTO {$table} (form_id, payload, referer, locale, request_id, status, created_at) VALUES (%d, %s, %s, %s, %s, 'pending', %s)",
-			$form_id ?: null,
-			$encoded,
-			sanitize_url($referer),
-			Form_Translations::normalize_locale($locale) ?: Form_Translations::DEFAULT_LOCALE,
-			$request_id,
-			current_time('mysql')
-		));
-		if ($inserted === false) return ['id' => 0, 'created' => false];
-		if ($inserted === 1) return ['id' => (int) $wpdb->insert_id, 'created' => true];
-		$id = (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE request_id = %s", $request_id));
-		return ['id' => $id, 'created' => false];
+		return (new Submission_Repository())->create($form_id, $payload, $referer, $locale, $request_id, $is_test);
 	}
 
 	public static function consume_rate_limit(string $key_hash, int $limit, int $window): bool
@@ -102,48 +71,19 @@ final class Repositories
 		return $attempts <= $limit;
 	}
 
-	public static function create_delivery(int $submission_id, string $connector): int
+	public static function create_delivery(int $submission_id, string $connector, array $route_snapshot = []): int
 	{
-		global $wpdb;
-		$table = Database::tables()['deliveries'];
-		$now = current_time('mysql');
-		$connector = sanitize_key($connector);
-		if ($submission_id <= 0 || $connector === '') return 0;
-		$inserted = $wpdb->query($wpdb->prepare(
-			"INSERT IGNORE INTO {$table} (submission_id, connector, status, attempts, retryable, next_attempt_at, idempotency_key, created_at, updated_at) VALUES (%d, %s, 'queued', 0, 1, %s, %s, %s, %s)",
-			$submission_id,
-			$connector,
-			$now,
-			hash('sha256', $submission_id . ':' . $connector),
-			$now,
-			$now
-		));
-		if ($inserted === false) return 0;
-		if ($inserted === 1) return (int) $wpdb->insert_id;
-		return (int) $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE submission_id = %d AND connector = %s", $submission_id, $connector));
+		return (new Delivery_Repository())->create($submission_id, $connector, $route_snapshot);
 	}
 
 	public static function due_deliveries(int $limit = 10): array
 	{
-		global $wpdb;
-		$tables = Database::tables();
-		$now = current_time('mysql');
-		return $wpdb->get_results($wpdb->prepare(
-			"SELECT d.*, s.payload, s.referer, s.form_id, s.locale FROM {$tables['deliveries']} d INNER JOIN {$tables['submissions']} s ON s.id = d.submission_id WHERE d.status = 'queued' AND (d.next_attempt_at IS NULL OR d.next_attempt_at <= %s) ORDER BY d.next_attempt_at ASC, d.id ASC LIMIT %d",
-			$now,
-			min(50, max(1, $limit))
-		), ARRAY_A) ?: [];
+		return (new Delivery_Repository())->due($limit);
 	}
 
 	public static function claim_delivery(int $delivery_id): bool
 	{
-		global $wpdb;
-		return $wpdb->query($wpdb->prepare(
-			"UPDATE " . Database::tables()['deliveries'] . " SET status = 'processing', last_attempt_at = %s, updated_at = %s WHERE id = %d AND status = 'queued'",
-			current_time('mysql'),
-			current_time('mysql'),
-			$delivery_id
-		)) === 1;
+		return (new Delivery_Repository())->claim($delivery_id);
 	}
 
 	public static function release_stale_deliveries(): void
@@ -257,9 +197,12 @@ final class Repositories
 
 	public static function delivery_belongs_to_submission(int $delivery_id, int $submission_id): bool
 	{
-		global $wpdb;
-		$table = Database::tables()['deliveries'];
-		return (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE id = %d AND submission_id = %d", $delivery_id, $submission_id)) === 1;
+		return (new Delivery_Repository())->belongs_to_submission($delivery_id, $submission_id);
+	}
+
+	public static function delivery(int $delivery_id): ?array
+	{
+		return (new Delivery_Repository())->find($delivery_id);
 	}
 
 	public static function save_delivery(int $submission_id, string $connector, Result $result): void
@@ -287,8 +230,7 @@ final class Repositories
 
 	public static function finish_submission(int $id, bool $all_success): void
 	{
-		global $wpdb;
-		$wpdb->update(Database::tables()['submissions'], ['status' => $all_success ? 'success' : 'failed'], ['id' => $id], ['%s'], ['%d']);
+		(new Submission_Repository())->finish($id, $all_success);
 	}
 
 	public static function submissions(int $limit = 100, array $filters = [], int $offset = 0): array
@@ -327,73 +269,17 @@ final class Repositories
 
 	public static function queue_summary(): array
 	{
-		global $wpdb;
-		$table = Database::tables()['deliveries'];
-		$now = current_time('mysql');
-		$row = $wpdb->get_row($wpdb->prepare(
-			"SELECT SUM(status = 'queued') AS queued, SUM(status = 'processing') AS processing, SUM(status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= %s)) AS due, MIN(CASE WHEN status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= %s) THEN COALESCE(next_attempt_at, created_at) ELSE NULL END) AS oldest_due_at FROM {$table}",
-			$now,
-			$now
-		), ARRAY_A) ?: [];
-		return [
-			'queued' => (int) ($row['queued'] ?? 0),
-			'due' => (int) ($row['due'] ?? 0),
-			'processing' => (int) ($row['processing'] ?? 0),
-			'oldest_due_at' => (string) ($row['oldest_due_at'] ?? ''),
-		];
+		return (new Statistics_Repository())->queue_summary();
 	}
 
 	public static function next_queued_timestamp(): ?int
 	{
-		global $wpdb;
-		$table = Database::tables()['deliveries'];
-		$value = $wpdb->get_var("SELECT MIN(COALESCE(next_attempt_at, created_at)) FROM {$table} WHERE status = 'queued'"); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		if (! is_string($value) || $value === '') return null;
-		$timestamp = strtotime($value . ' ' . wp_timezone_string());
-		return $timestamp === false ? null : $timestamp;
+		return (new Statistics_Repository())->next_queued_timestamp();
 	}
 
 	public static function dashboard_stats(): array
 	{
-		global $wpdb;
-		$tables = Database::tables();
-		$today = wp_date('Y-m-d 00:00:00', null, wp_timezone());
-		$week = wp_date('Y-m-d H:i:s', time() - (7 * DAY_IN_SECONDS), wp_timezone());
-		$submission_stats = $wpdb->get_row($wpdb->prepare(
-			"SELECT COUNT(*) AS total, SUM(status = 'success') AS success, SUM(created_at >= %s) AS today, SUM(created_at >= %s) AS week FROM {$tables['submissions']}",
-			$today,
-			$week
-		), ARRAY_A) ?: [];
-		$delivery_rows = $wpdb->get_results($wpdb->prepare(
-			"SELECT connector, SUM(updated_at >= %s AND status IN ('success','sent')) AS success, SUM(updated_at >= %s AND status = 'failed') AS failed, SUM(updated_at >= %s AND status = 'queued') AS queued, SUM(updated_at >= %s AND status = 'processing') AS processing, MAX(CASE WHEN status IN ('success','sent') THEN updated_at ELSE NULL END) AS last_success FROM {$tables['deliveries']} GROUP BY connector",
-			$today,
-			$today,
-			$today,
-			$today
-		), ARRAY_A) ?: [];
-		$activity = [];
-		$failed_today = 0;
-		foreach ($delivery_rows as $row) {
-			$key = sanitize_key((string) $row['connector']);
-			$activity[$key] = [
-				'success' => (int) $row['success'],
-				'failed' => (int) $row['failed'],
-				'queued' => (int) $row['queued'],
-				'processing' => (int) $row['processing'],
-				'last_success' => (string) ($row['last_success'] ?? ''),
-			];
-			$failed_today += (int) $row['failed'];
-		}
-		$total = (int) ($submission_stats['total'] ?? 0);
-		$success = (int) ($submission_stats['success'] ?? 0);
-		return [
-			'forms' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$tables['forms']}"), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			'today' => (int) ($submission_stats['today'] ?? 0),
-			'week' => (int) ($submission_stats['week'] ?? 0),
-			'success_rate' => $total > 0 ? (int) round(($success / $total) * 100) : 0,
-			'failed_today' => $failed_today,
-			'activity' => $activity,
-		];
+		return (new Statistics_Repository())->dashboard();
 	}
 
 	public static function purge_submissions_older_than(int $days): int
@@ -461,6 +347,7 @@ final class Repositories
 	{
 		$conditions = [];
 		$args = [];
+		if (! empty($filters['exclude_test'])) $conditions[] = 's.is_test = 0';
 		if (! empty($filters['form_id'])) { $conditions[] = 's.form_id = %d'; $args[] = absint($filters['form_id']); }
 		if (! empty($filters['status']) && in_array($filters['status'], ['queued', 'processing', 'success', 'failed'], true)) { $conditions[] = 's.status = %s'; $args[] = $filters['status']; }
 		if (! empty($filters['connector'])) { $tables = Database::tables(); $conditions[] = "EXISTS (SELECT 1 FROM {$tables['deliveries']} df WHERE df.submission_id = s.id AND df.connector = %s)"; $args[] = sanitize_key($filters['connector']); }

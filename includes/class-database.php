@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.4.4';
+	private const SCHEMA_VERSION = '1.6.0';
 
 	public static function tables(): array
 	{
@@ -52,6 +52,8 @@ final class Database
 			button_icon longtext NOT NULL,
 			default_locale varchar(20) NOT NULL DEFAULT 'uk_UA',
 			translations longtext NOT NULL,
+			routing_config longtext NOT NULL,
+			routing_version int(10) unsigned NOT NULL DEFAULT 1,
 			active tinyint(1) unsigned NOT NULL DEFAULT 1,
 			legacy_id bigint(20) unsigned DEFAULT NULL,
 			created_at datetime NOT NULL,
@@ -67,6 +69,7 @@ final class Database
 			referer text NOT NULL,
 			locale varchar(20) NOT NULL DEFAULT 'uk_UA',
 			request_id varchar(64) DEFAULT NULL,
+			is_test tinyint(1) unsigned NOT NULL DEFAULT 0,
 			status varchar(20) NOT NULL DEFAULT 'pending',
 			created_at datetime NOT NULL,
 			PRIMARY KEY  (id),
@@ -89,6 +92,7 @@ final class Database
 			next_attempt_at datetime DEFAULT NULL,
 			last_attempt_at datetime DEFAULT NULL,
 			idempotency_key varchar(64) NOT NULL DEFAULT '',
+			route_snapshot longtext NOT NULL,
 			external_reference varchar(255) NOT NULL DEFAULT '',
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
@@ -136,7 +140,7 @@ final class Database
 		global $wpdb;
 		$table = self::tables()['forms'];
 		if (! self::table_exists($table)) return;
-		$rows = $wpdb->get_results("SELECT id, editor_mode, form_schema, submit_label, button_icon, default_locale, translations FROM {$table}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$rows = $wpdb->get_results("SELECT id, editor_mode, form_schema, submit_label, button_icon, default_locale, translations, routing_config FROM {$table}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		foreach ($rows ?: [] as $row) {
 			$schema = json_decode((string) $row['form_schema'], true);
 			$schema = Form_Builder::sanitize_schema(is_array($schema) ? $schema : []);
@@ -147,8 +151,10 @@ final class Database
 			$data = [
 				'default_locale' => $locale,
 				'translations' => (string) wp_json_encode($translations, JSON_UNESCAPED_UNICODE),
+				'routing_config' => (string) wp_json_encode(Route_Config::sanitize(json_decode((string) ($row['routing_config'] ?? ''), true), $schema), JSON_UNESCAPED_UNICODE),
+				'routing_version' => Route_Config::VERSION,
 			];
-			$formats = ['%s', '%s'];
+			$formats = ['%s', '%s', '%s', '%d'];
 			if (($row['editor_mode'] ?? '') === 'visual' && $schema !== []) {
 				$resolved = Form_Translations::resolve($translations, $locale, $locale);
 				$button_icon = json_decode((string) ($row['button_icon'] ?? ''), true);
@@ -176,8 +182,8 @@ final class Database
 			$rows = $wpdb->get_results("SELECT id, name, code FROM {$legacy_forms}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			foreach ($rows as $row) {
 				$wpdb->query($wpdb->prepare(
-					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, button_icon, default_locale, translations, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, '{}', 'uk_UA', '{}', %d, %s, %s)",
-					(string) $row['name'], Form_Builder::sanitize_code((string) $row['code']), __('Надіслати', 'leadforms-go'), (int) $row['id'], current_time('mysql'), current_time('mysql')
+					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, button_icon, default_locale, translations, routing_config, routing_version, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, '{}', 'uk_UA', '{}', %s, %d, %d, %s, %s)",
+					(string) $row['name'], Form_Builder::sanitize_code((string) $row['code']), __('Надіслати', 'leadforms-go'), (string) wp_json_encode(Route_Config::defaults()), Route_Config::VERSION, (int) $row['id'], current_time('mysql'), current_time('mysql')
 				));
 			}
 		}
