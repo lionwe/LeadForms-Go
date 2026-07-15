@@ -14,6 +14,10 @@
 	--lfg-warning-soft: #fff7df;
 	--lfg-error: #b42318;
 	--lfg-error-soft: #fff0ee;
+	--lfg-code-background: #161b22;
+	--lfg-code-border: #30363d;
+	--lfg-code-text: #e6edf3;
+	--lfg-code-selection: #264f78;
 	--lfg-shadow-sm: 0 0.0625rem 0.125rem rgba(16, 24, 40, 0.05);
 	--lfg-shadow-md: 0 0.5rem 1.5rem rgba(16, 24, 40, 0.08);
 	box-sizing: border-box;
@@ -463,10 +467,18 @@
 	font-size: 0.875rem;
 }
 
-.lfg-code-editor textarea {
+.leadforms-go-admin .lfg-code-editor textarea {
 	border: 0;
-	background: #161b22;
-	box-shadow: inset 0 0 0 1px #30363d;
+	background: var(--lfg-code-background);
+	color: var(--lfg-code-text);
+	caret-color: var(--lfg-code-text);
+	box-shadow: inset 0 0 0 1px var(--lfg-code-border);
+	color-scheme: dark;
+}
+
+.leadforms-go-admin .lfg-code-editor textarea::selection {
+	background: var(--lfg-code-selection);
+	color: var(--lfg-code-text);
 }
 
 .lfg-integrations {
