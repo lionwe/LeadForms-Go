@@ -6,7 +6,9 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.3.3';
+	private const SCHEMA_VERSION = '1.6.0';
+	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
+	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
 
 	public static function tables(): array
 	{
@@ -16,6 +18,7 @@ final class Database
 			'submissions' => $wpdb->prefix . 'leadforms_go_submissions',
 			'deliveries' => $wpdb->prefix . 'leadforms_go_deliveries',
 			'attempts' => $wpdb->prefix . 'leadforms_go_delivery_attempts',
+			'rate_limits' => $wpdb->prefix . 'leadforms_go_rate_limits',
 		];
 	}
 
@@ -23,6 +26,7 @@ final class Database
 	{
 		self::install();
 		self::migrate_legacy();
+		self::protect_site_transfer();
 	}
 
 	public static function maybe_upgrade(): void
@@ -31,6 +35,14 @@ final class Database
 			self::install();
 		}
 		if (! get_option('leadforms_go_legacy_migrated')) self::migrate_legacy();
+		self::protect_site_transfer();
+		self::grant_capabilities();
+	}
+
+	public static function site_transfer_notice(): array
+	{
+		$notice = get_option(self::SITE_TRANSFER_OPTION, []);
+		return is_array($notice) ? $notice : [];
 	}
 
 	private static function install(): void
@@ -47,6 +59,12 @@ final class Database
 			editor_mode varchar(20) NOT NULL DEFAULT 'code',
 			form_schema longtext NOT NULL,
 			submit_label varchar(120) NOT NULL DEFAULT 'Надіслати',
+			button_icon longtext NOT NULL,
+			default_locale varchar(20) NOT NULL DEFAULT 'uk_UA',
+			translations longtext NOT NULL,
+			routing_config longtext NOT NULL,
+			routing_version int(10) unsigned NOT NULL DEFAULT 1,
+			active tinyint(1) unsigned NOT NULL DEFAULT 1,
 			legacy_id bigint(20) unsigned DEFAULT NULL,
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
@@ -59,11 +77,16 @@ final class Database
 			legacy_id bigint(20) unsigned DEFAULT NULL,
 			payload longtext NOT NULL,
 			referer text NOT NULL,
+			locale varchar(20) NOT NULL DEFAULT 'uk_UA',
+			request_id varchar(64) DEFAULT NULL,
+			is_test tinyint(1) unsigned NOT NULL DEFAULT 0,
 			status varchar(20) NOT NULL DEFAULT 'pending',
 			created_at datetime NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY legacy_id (legacy_id),
 			KEY form_id (form_id),
+			KEY locale (locale),
+			UNIQUE KEY request_id (request_id),
 			KEY status_created (status,created_at),
 			KEY created_at (created_at)
 		) $collate;");
@@ -79,6 +102,7 @@ final class Database
 			next_attempt_at datetime DEFAULT NULL,
 			last_attempt_at datetime DEFAULT NULL,
 			idempotency_key varchar(64) NOT NULL DEFAULT '',
+			route_snapshot longtext NOT NULL,
 			external_reference varchar(255) NOT NULL DEFAULT '',
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
@@ -100,10 +124,57 @@ final class Database
 			PRIMARY KEY  (id),
 			UNIQUE KEY delivery_attempt (delivery_id,attempt_number)
 		) $collate;");
+		dbDelta("CREATE TABLE {$tables['rate_limits']} (
+			key_hash char(64) NOT NULL,
+			attempts int(10) unsigned NOT NULL DEFAULT 1,
+			expires_at datetime NOT NULL,
+			PRIMARY KEY  (key_hash),
+			KEY expires_at (expires_at)
+		) $collate;");
+		self::migrate_form_translations();
+		self::grant_capabilities();
 		update_option('leadforms_go_schema_version', self::SCHEMA_VERSION, false);
 		$queued = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$tables['deliveries']} WHERE status = 'queued'"); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		if ($queued > 0) update_option('leadforms_go_queue_pending', 1, false);
 		else delete_option('leadforms_go_queue_pending');
+	}
+
+	private static function grant_capabilities(): void
+	{
+		$role = get_role('administrator');
+		if ($role && ! $role->has_cap('leadforms_go_view_submissions')) $role->add_cap('leadforms_go_view_submissions');
+	}
+
+	private static function migrate_form_translations(): void
+	{
+		global $wpdb;
+		$table = self::tables()['forms'];
+		if (! self::table_exists($table)) return;
+		$rows = $wpdb->get_results("SELECT id, editor_mode, form_schema, submit_label, button_icon, default_locale, translations, routing_config FROM {$table}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		foreach ($rows ?: [] as $row) {
+			$schema = json_decode((string) $row['form_schema'], true);
+			$schema = Form_Builder::sanitize_schema(is_array($schema) ? $schema : []);
+			$locale = Form_Translations::normalize_locale((string) $row['default_locale']) ?: Form_Translations::DEFAULT_LOCALE;
+			$translations = json_decode((string) $row['translations'], true);
+			$translations = Form_Translations::sanitize(is_array($translations) ? $translations : []);
+			if ($schema !== []) $translations = Form_Translations::complete($translations, $schema);
+			$data = [
+				'default_locale' => $locale,
+				'translations' => (string) wp_json_encode($translations, JSON_UNESCAPED_UNICODE),
+				'routing_config' => (string) wp_json_encode(Route_Config::sanitize(json_decode((string) ($row['routing_config'] ?? ''), true), $schema), JSON_UNESCAPED_UNICODE),
+				'routing_version' => Route_Config::VERSION,
+			];
+			$formats = ['%s', '%s', '%s', '%d'];
+			if (($row['editor_mode'] ?? '') === 'visual' && $schema !== []) {
+				$resolved = Form_Translations::resolve($translations, $locale, $locale);
+				$button_icon = json_decode((string) ($row['button_icon'] ?? ''), true);
+				$data['form_schema'] = (string) wp_json_encode($schema, JSON_UNESCAPED_UNICODE);
+				$data['code'] = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), (string) $resolved['submit_label'], '', Form_Builder::sanitize_button_icon(is_array($button_icon) ? $button_icon : []));
+				$formats[] = '%s';
+				$formats[] = '%s';
+			}
+			$wpdb->update($table, $data, ['id' => (int) $row['id']], $formats, ['%d']);
+		}
 	}
 
 	private static function migrate_legacy(): void
@@ -121,8 +192,8 @@ final class Database
 			$rows = $wpdb->get_results("SELECT id, name, code FROM {$legacy_forms}", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			foreach ($rows as $row) {
 				$wpdb->query($wpdb->prepare(
-					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, %d, %s, %s)",
-					(string) $row['name'], Form_Builder::sanitize_code((string) $row['code']), __('Надіслати', 'leadforms-go'), (int) $row['id'], current_time('mysql'), current_time('mysql')
+					"INSERT IGNORE INTO {$tables['forms']} (name, code, editor_mode, form_schema, submit_label, button_icon, default_locale, translations, routing_config, routing_version, legacy_id, created_at, updated_at) VALUES (%s, %s, 'code', '[]', %s, '{}', 'uk_UA', '{}', %s, %d, %d, %s, %s)",
+					(string) $row['name'], Form_Builder::sanitize_code((string) $row['code']), __('Надіслати', 'leadforms-go'), (string) wp_json_encode(Route_Config::defaults()), Route_Config::VERSION, (int) $row['id'], current_time('mysql'), current_time('mysql')
 				));
 			}
 		}
@@ -169,6 +240,34 @@ final class Database
 			}
 		}
 		update_option('leadforms_go_legacy_migrated', time(), false);
+	}
+
+	private static function protect_site_transfer(): void
+	{
+		$current = self::site_origin();
+		if ($current === '') return;
+		$previous = esc_url_raw((string) get_option(self::SITE_ORIGIN_OPTION, ''));
+		if ($previous === '') {
+			update_option(self::SITE_ORIGIN_OPTION, $current, false);
+			return;
+		}
+		if (hash_equals($previous, $current)) return;
+
+		Settings::disable_integrations();
+		$cancelled = Repositories::cancel_active_deliveries(__('Доставку скасовано після перенесення сайту. Перевірте інтеграції перед повторною відправкою.', 'leadforms-go'));
+		delete_option('leadforms_go_queue_pending');
+		update_option(self::SITE_ORIGIN_OPTION, $current, false);
+		update_option(self::SITE_TRANSFER_OPTION, [
+			'previous' => $previous,
+			'current' => $current,
+			'cancelled' => $cancelled,
+			'detected_at' => time(),
+		], false);
+	}
+
+	private static function site_origin(): string
+	{
+		return untrailingslashit(strtolower(esc_url_raw(home_url('/'))));
 	}
 
 	private static function table_exists(string $table): bool

@@ -1,0 +1,254 @@
+.lfg-integrations {
+	display: grid;
+	gap: 1rem;
+}
+
+.lfg-integrations__heading,
+.lfg-test-data,
+.lfg-route-card {
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.75rem;
+	background: var(--lfg-surface);
+}
+
+.lfg-integrations__heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding: 1rem;
+}
+
+.lfg-integrations__heading h2 {
+	margin: 0 0 0.25rem;
+}
+
+.lfg-integrations__heading p,
+.lfg-test-data p {
+	margin: 0;
+	color: var(--lfg-muted);
+}
+
+.lfg-test-data {
+	padding: 1rem;
+}
+
+.lfg-test-data summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.lfg-test-data[open] summary {
+	margin-bottom: 0.75rem;
+}
+
+.lfg-test-data__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+	gap: 0.75rem;
+	margin-top: 1rem;
+}
+
+.lfg-test-data__grid label,
+.lfg-route-grid label,
+.lfg-route-locale label {
+	display: grid;
+	gap: 0.375rem;
+}
+
+.lfg-test-data__grid label > span,
+.lfg-route-grid label > span,
+.lfg-route-locale label > span {
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.lfg-test-data__grid input,
+.lfg-route-grid input,
+.lfg-route-grid select,
+.lfg-route-locale textarea {
+	width: 100%;
+}
+
+.lfg-route-card {
+	overflow: hidden;
+}
+
+.lfg-route-card > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 1rem;
+	border-bottom: 1px solid var(--lfg-border);
+	background: var(--lfg-surface-soft);
+}
+
+.lfg-route-card h3,
+.lfg-route-locale h4 {
+	margin: 0;
+}
+
+.lfg-route-card__body {
+	display: grid;
+	gap: 1rem;
+	padding: 1rem;
+}
+
+.lfg-route-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+	gap: 0.75rem;
+}
+
+.lfg-route-variables,
+.lfg-route-actions,
+.lfg-route-test,
+.lfg-column-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.lfg-route-variables code {
+	padding: 0.1875rem 0.375rem;
+	border-radius: 0.25rem;
+}
+
+.lfg-route-locale {
+	display: grid;
+	gap: 0.75rem;
+	padding: 1rem;
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.5rem;
+}
+
+.lfg-telegram-buttons,
+.lfg-sheet-columns,
+.lfg-crm-mapping {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.lfg-telegram-button-row {
+	display: grid;
+	grid-template-columns: minmax(8rem, 0.6fr) minmax(12rem, 1.4fr) auto;
+	gap: 0.5rem;
+}
+
+.lfg-crm-mapping-row {
+	display: grid;
+	grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1fr) auto;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+}
+
+.lfg-telegram-button-row input,
+.lfg-sheet-column-row input,
+.lfg-sheet-column-row select {
+	width: 100%;
+}
+
+.lfg-route-preview pre {
+	min-height: 5rem;
+	max-height: 18rem;
+	overflow: auto;
+	margin: 0.5rem 0 0;
+	padding: 0.75rem;
+	border-radius: 0.375rem;
+	background: #1d2327;
+	color: #f6f7f7;
+	white-space: pre-wrap;
+}
+
+.lfg-route-actions input {
+	min-width: 14rem;
+}
+
+.lfg-sheet-columns__heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.lfg-sheet-column-row {
+	display: grid;
+	grid-template-columns: auto minmax(9rem, 1fr) minmax(8rem, 0.7fr) minmax(8rem, 1fr) minmax(8rem, 1fr) auto;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.5rem;
+	padding: 0.5rem;
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.375rem;
+	background: var(--lfg-surface-soft);
+}
+
+.lfg-column-actions {
+	gap: 0.25rem;
+}
+
+.lfg-route-test {
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--lfg-border);
+}
+
+.lfg-route-test .is-sent {
+	color: var(--lfg-success);
+}
+
+.lfg-route-test .is-failed,
+.lfg-route-test .is-cancelled {
+	color: var(--lfg-error);
+}
+
+@media (max-width: 68rem) {
+	.lfg-sheet-column-row {
+		grid-template-columns: auto 1fr 1fr;
+	}
+
+	.lfg-sheet-column-row > *:nth-child(n + 4) {
+		grid-column: 2 / -1;
+	}
+
+	.lfg-column-actions {
+		grid-column: auto;
+	}
+}
+
+@media (max-width: 48.875rem) {
+	.lfg-editor-tabs {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		width: 100%;
+		max-width: 100%;
+	}
+
+	.lfg-editor-tab,
+	.lfg-builder,
+	.lfg-builder__palette,
+	.lfg-builder__workspace {
+		min-width: 0;
+	}
+
+	.lfg-builder__palette,
+	.lfg-builder__workspace {
+		width: auto;
+	}
+
+	.lfg-route-card > header,
+	.lfg-route-actions,
+	.lfg-route-test {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.lfg-telegram-button-row,
+	.lfg-crm-mapping-row,
+	.lfg-sheet-column-row {
+		grid-template-columns: 1fr;
+	}
+
+	.lfg-sheet-column-row > * {
+		grid-column: auto;
+	}
+}
