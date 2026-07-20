@@ -69,6 +69,8 @@ final class Plugin
 				$form_code = Form_Builder::render(Form_Translations::apply_to_schema($schema, $translation), (string) $translation['submit_label'], $instance_key, Form_Builder::sanitize_button_icon(is_array($button_icon) ? $button_icon : []));
 			}
 		}
+		$masked_form_code = preg_replace('/\bdata-mask(?=\s*=)/i', 'data-leadforms-go-mask', $form_code);
+		if (is_string($masked_form_code)) $form_code = $masked_form_code;
 		$this->enqueue_frontend();
 		$messages = wp_json_encode($translation['messages'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 		$security = Submission_Security::context((int) $form['id']);

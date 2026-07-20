@@ -26,10 +26,17 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 
 	public function test_connection(): Result
 	{
-		$valid = $this->validate_settings();
-		if (is_wp_error($valid)) return new Result(false, 0, $valid->get_error_message(), false);
 		$s = $this->settings();
-		return $this->result(wp_remote_post($this->endpoint((string) $s['token'], 'getChat'), $this->request_args(['body' => ['chat_id' => $s['chat_id']]])));
+		return $this->test_credentials((string) ($s['token'] ?? ''), (string) ($s['chat_id'] ?? ''));
+	}
+
+	public function test_credentials(string $token, string $chat_id): Result
+	{
+		$token = substr(sanitize_text_field($token), 0, 256);
+		$chat_id = substr(sanitize_text_field($chat_id), 0, 64);
+		if ($token === '' || $chat_id === '') return new Result(false, 0, __('Потрібні токен Telegram-бота та ID чату.', 'leadforms-go'), false);
+
+		return $this->result(wp_remote_post($this->endpoint($token, 'getChat'), $this->request_args(['body' => ['chat_id' => $chat_id]])));
 	}
 
 	public function test_route(array $route, array $payload, int $form_id, string $locale): Result

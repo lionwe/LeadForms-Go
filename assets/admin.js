@@ -422,7 +422,7 @@ class LeadFormsGoAdmin {
 			lines.push(`    <span>${escape(text.label)}${mark}</span>`);
 			if (field.type === 'textarea') lines.push(`    <textarea id="${id}" name="${escape(field.key)}" placeholder="${escape(text.placeholder)}"${required}></textarea>`);
 			else {
-				const mask = field.type === 'tel' && field.mask ? ` data-mask="${escape(field.mask)}" data-min-length="12"` : '';
+				const mask = field.type === 'tel' && field.mask ? ` data-leadforms-go-mask="${escape(field.mask)}" data-min-length="12"` : '';
 				lines.push(`    <input id="${id}" type="${escape(field.type)}" name="${escape(field.key)}" placeholder="${escape(text.placeholder)}"${mask}${required}>`);
 			}
 			lines.push('  </label>');
@@ -500,6 +500,13 @@ class LeadFormsGoAdmin {
 				});
 				const enabled = section?.querySelector('[name="leadforms_go_settings[sheets][enabled]"]');
 				body.append('enabled', enabled?.checked ? '1' : '');
+			}
+			if (button.dataset.lfgTest === 'telegram') {
+				const section = button.closest('.lfg-settings');
+				['token', 'chat_id'].forEach((key) => {
+					const input = section?.querySelector(`[name="leadforms_go_settings[telegram][${key}]"]`);
+					if (input?.value) body.append(key, input.value);
+				});
 			}
 			const response = await fetch(this.config.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body, signal: controller.signal });
 			const result = await response.json();

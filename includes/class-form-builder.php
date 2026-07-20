@@ -150,7 +150,7 @@ final class Form_Builder
 			if ($field['type'] === 'textarea') {
 				$lines[] = '    <textarea id="' . esc_attr($id) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $required . '></textarea>';
 			} else {
-				$mask = $field['type'] === 'tel' && $field['mask'] !== '' ? ' data-mask="' . esc_attr($field['mask']) . '" data-min-length="12"' : '';
+				$mask = $field['type'] === 'tel' && $field['mask'] !== '' ? ' data-leadforms-go-mask="' . esc_attr($field['mask']) . '" data-min-length="12"' : '';
 				$lines[] = '    <input id="' . esc_attr($id) . '" type="' . esc_attr($field['type']) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $mask . $required . '>';
 			}
 			$lines[] = '  </label>';
@@ -245,6 +245,7 @@ final class Form_Builder
 			'minlength' => true,
 			'maxlength' => true,
 			'data-mask' => true,
+			'data-leadforms-go-mask' => true,
 			'data-min-length' => true,
 			'data-max-length' => true,
 			'data-error-message' => true,

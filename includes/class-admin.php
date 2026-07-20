@@ -94,6 +94,16 @@ final class Admin
 	{
 		$this->require_capability('manage_options');
 		$this->open(__('Огляд', 'leadforms-go'));
+		$transfer = Database::site_transfer_notice();
+		if ($transfer !== []) {
+			$message = sprintf(
+				__('Виявлено перенесення сайту з %1$s на %2$s. Інтеграції вимкнено, активні доставки скасовано: %3$d. Перевірте налаштування перед новими заявками.', 'leadforms-go'),
+				(string) ($transfer['previous'] ?? ''),
+				(string) ($transfer['current'] ?? ''),
+				(int) ($transfer['cancelled'] ?? 0)
+			);
+			echo '<div class="notice notice-warning inline"><p><strong>' . esc_html__('Захист після перенесення сайту.', 'leadforms-go') . '</strong> ' . esc_html($message) . '</p></div>';
+		}
 		$stats = Repositories::dashboard_stats();
 		$queue = (new Delivery_Queue())->health();
 		echo '<div class="lfg-dashboard-header"><div><h2>' . esc_html__('LeadForms Go', 'leadforms-go') . '</h2><p>' . esc_html__('Короткий огляд форм, заявок та інтеграцій.', 'leadforms-go') . '</p></div><div class="lfg-dashboard-actions"><a class="button lfg-dashboard-button lfg-dashboard-button--secondary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Налаштування', 'leadforms-go') . '</a><a class="button button-primary lfg-dashboard-button lfg-dashboard-button--primary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-forms&new=1')) . '"><span class="lfg-button-icon" aria-hidden="true"></span>' . esc_html__('Додати форму', 'leadforms-go') . '</a></div></div>';
@@ -137,7 +147,11 @@ final class Admin
 		} else {
 			echo '<table class="widefat"><thead><tr><th>ID</th><th>' . esc_html__('Дата', 'leadforms-go') . '</th><th>' . esc_html__('Статус', 'leadforms-go') . '</th><th>' . esc_html__('Джерело', 'leadforms-go') . '</th></tr></thead><tbody>';
 			foreach ($recent as $row) {
-				printf('<tr><td><a href="%s">#%d</a></td><td>%s</td><td><span class="lfg-delivery-status is-%s">%s</span></td><td>%s</td></tr>', esc_url(admin_url('admin.php?page=leadforms-go-history&submission=' . (int) $row['id'])), (int) $row['id'], esc_html($row['created_at']), esc_attr($row['status']), esc_html(self::status_label((string) $row['status'])), esc_html($row['referer'] ?: '—'));
+				$source = (string) $row['referer'];
+				$source_html = $source !== ''
+					? '<a class="lfg-dashboard-source" href="' . esc_url($source) . '" target="_blank" rel="noopener noreferrer" title="' . esc_attr($source) . '">' . esc_html($source) . '</a>'
+					: '<span class="lfg-dashboard-source">—</span>';
+				printf('<tr><td><a href="%s">#%d</a></td><td>%s</td><td><span class="lfg-delivery-status is-%s">%s</span></td><td>%s</td></tr>', esc_url(admin_url('admin.php?page=leadforms-go-history&submission=' . (int) $row['id'])), (int) $row['id'], esc_html($row['created_at']), esc_attr($row['status']), esc_html(self::status_label((string) $row['status'])), $source_html);
 			}
 			echo '</tbody></table>';
 		}
@@ -231,6 +245,9 @@ final class Admin
 		$sheets_placeholders = ['spreadsheet_id' => 'https://docs.google.com/spreadsheets/d/…/edit', 'sheet_name' => __('Аркуш1', 'leadforms-go'), 'fields_order' => 'first_name, phone, consent'];
 		foreach ($sections as $section => $section_data) {
 			echo '<section class="lfg-card lfg-settings"><header><h2>' . esc_html($section_data['title']) . '</h2><label class="lfg-switch"><input type="checkbox" name="' . esc_attr($name . '[' . $section . '][enabled]') . '" value="1" ' . checked(! empty($s[$section]['enabled']), true, false) . '><span>' . esc_html__('Увімкнено', 'leadforms-go') . '</span></label></header>';
+			if ($section === 'telegram' && (defined('LEADFORMS_GO_TELEGRAM_TOKEN') || defined('LEADFORMS_GO_TELEGRAM_CHAT_ID'))) {
+				echo '<div class="notice notice-warning inline"><p>' . esc_html__('Telegram налаштовано через wp-config.php. Значення з адмінки не можуть замінити активні константи LEADFORMS_GO_TELEGRAM_TOKEN або LEADFORMS_GO_TELEGRAM_CHAT_ID.', 'leadforms-go') . '</p></div>';
+			}
 			$fields = $section_data['fields'];
 			foreach ($fields as $key => $label) {
 				$is_secret = $key === 'token'; $value = $is_secret ? '' : (string) ($s[$section][$key] ?? '');
@@ -238,7 +255,9 @@ final class Admin
 				echo '<label><span>' . esc_html($label) . '</span><input class="regular-text" type="' . ($is_secret ? 'password' : 'text') . '" name="' . esc_attr($name . '[' . $section . '][' . $key . ']') . '" value="' . esc_attr($value) . '" placeholder="' . esc_attr($placeholder) . '">' . (isset($sheets_help[$key]) && $section === 'sheets' ? '<small>' . esc_html($sheets_help[$key]) . '</small>' : '') . '</label>';
 			}
 			$test_label = $section === 'sheets' ? __('Зберегти й перевірити', 'leadforms-go') : __('Перевірити підключення', 'leadforms-go');
-			echo '<button type="button" class="button" data-lfg-test="' . esc_attr($section) . '">' . esc_html($test_label) . '</button><span class="lfg-test-result" aria-live="polite"></span></section>';
+			echo '<button type="button" class="button" data-lfg-test="' . esc_attr($section) . '">' . esc_html($test_label) . '</button><span class="lfg-test-result" aria-live="polite"></span>';
+			if ($section === 'telegram') echo '<small class="lfg-test-help">' . esc_html__('Перевірка використовує поточні введені значення й не зберігає їх.', 'leadforms-go') . '</small>';
+			echo '</section>';
 			if ($section === 'sheets') $this->google_setup();
 		}
 		echo '</div>'; submit_button(__('Зберегти налаштування', 'leadforms-go')); echo '</form>'; $this->close();
@@ -393,7 +412,17 @@ final class Admin
 		$connectors = Connectors::all();
 		if (! isset($connectors[$key])) wp_send_json_error(['message' => __('Невідома інтеграція.', 'leadforms-go')], 400);
 		try {
-			$result = $connectors[$key]->test_connection();
+			if ($key === 'telegram' && $connectors[$key] instanceof Telegram_Connector) {
+				$settings = Settings::section('telegram');
+				$token = self::scalar_string($_POST['token'] ?? '');
+				$chat_id = self::scalar_string($_POST['chat_id'] ?? '');
+				$result = $connectors[$key]->test_credentials(
+					$token !== '' ? $token : (string) ($settings['token'] ?? ''),
+					$chat_id !== '' ? $chat_id : (string) ($settings['chat_id'] ?? '')
+				);
+			} else {
+				$result = $connectors[$key]->test_connection();
+			}
 		} catch (\Throwable) {
 			wp_send_json_error(['message' => __('Під час перевірки сталася внутрішня помилка.', 'leadforms-go')], 500);
 		}
