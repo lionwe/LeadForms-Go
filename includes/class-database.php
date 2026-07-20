@@ -7,6 +7,8 @@ namespace LeadFormsGo;
 final class Database
 {
 	private const SCHEMA_VERSION = '1.6.0';
+	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
+	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
 
 	public static function tables(): array
 	{
@@ -24,6 +26,7 @@ final class Database
 	{
 		self::install();
 		self::migrate_legacy();
+		self::protect_site_transfer();
 	}
 
 	public static function maybe_upgrade(): void
@@ -32,7 +35,14 @@ final class Database
 			self::install();
 		}
 		if (! get_option('leadforms_go_legacy_migrated')) self::migrate_legacy();
+		self::protect_site_transfer();
 		self::grant_capabilities();
+	}
+
+	public static function site_transfer_notice(): array
+	{
+		$notice = get_option(self::SITE_TRANSFER_OPTION, []);
+		return is_array($notice) ? $notice : [];
 	}
 
 	private static function install(): void
@@ -230,6 +240,34 @@ final class Database
 			}
 		}
 		update_option('leadforms_go_legacy_migrated', time(), false);
+	}
+
+	private static function protect_site_transfer(): void
+	{
+		$current = self::site_origin();
+		if ($current === '') return;
+		$previous = esc_url_raw((string) get_option(self::SITE_ORIGIN_OPTION, ''));
+		if ($previous === '') {
+			update_option(self::SITE_ORIGIN_OPTION, $current, false);
+			return;
+		}
+		if (hash_equals($previous, $current)) return;
+
+		Settings::disable_integrations();
+		$cancelled = Repositories::cancel_active_deliveries(__('Доставку скасовано після перенесення сайту. Перевірте інтеграції перед повторною відправкою.', 'leadforms-go'));
+		delete_option('leadforms_go_queue_pending');
+		update_option(self::SITE_ORIGIN_OPTION, $current, false);
+		update_option(self::SITE_TRANSFER_OPTION, [
+			'previous' => $previous,
+			'current' => $current,
+			'cancelled' => $cancelled,
+			'detected_at' => time(),
+		], false);
+	}
+
+	private static function site_origin(): string
+	{
+		return untrailingslashit(strtolower(esc_url_raw(home_url('/'))));
 	}
 
 	private static function table_exists(string $table): bool

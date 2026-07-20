@@ -321,6 +321,35 @@
 	overflow: hidden;
 }
 
+.lfg-recent-submissions table {
+	width: 100%;
+	table-layout: fixed;
+}
+
+.lfg-recent-submissions th:nth-child(1) {
+	width: 3.75rem;
+}
+
+.lfg-recent-submissions th:nth-child(2) {
+	width: 5rem;
+}
+
+.lfg-recent-submissions th:nth-child(3) {
+	width: 6rem;
+}
+
+.lfg-recent-submissions td {
+	min-width: 0;
+}
+
+.lfg-dashboard-source {
+	display: block;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .leadforms-go-admin .widefat {
 	border: 0;
 	box-shadow: none;
@@ -636,6 +665,14 @@
 
 .lfg-settings h2 {
 	font-size: 1.0625rem;
+}
+
+.lfg-test-help {
+	display: block;
+	margin-top: 0.625rem;
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	line-height: 1.45;
 }
 
 .lfg-google-connect {

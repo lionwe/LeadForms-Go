@@ -152,6 +152,46 @@ final class Repositories
 		self::sync_submission_status((int) $delivery['submission_id']);
 	}
 
+	public static function cancel_active_deliveries(string $message): int
+	{
+		global $wpdb;
+		$tables = Database::tables();
+		$delivery_table = $tables['deliveries'];
+		$submission_ids = $wpdb->get_col("SELECT DISTINCT submission_id FROM {$delivery_table} WHERE status IN ('queued', 'processing')"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		if (! is_array($submission_ids) || $submission_ids === []) return 0;
+
+		$count = $wpdb->update(
+			$delivery_table,
+			[
+				'status' => 'cancelled',
+				'error_message' => sanitize_text_field($message),
+				'retryable' => 0,
+				'next_attempt_at' => null,
+				'updated_at' => current_time('mysql'),
+			],
+			['status' => 'queued'],
+			['%s', '%s', '%d', '%s', '%s'],
+			['%s']
+		);
+		$processing_count = $wpdb->update(
+			$delivery_table,
+			[
+				'status' => 'cancelled',
+				'error_message' => sanitize_text_field($message),
+				'retryable' => 0,
+				'next_attempt_at' => null,
+				'updated_at' => current_time('mysql'),
+			],
+			['status' => 'processing'],
+			['%s', '%s', '%d', '%s', '%s'],
+			['%s']
+		);
+		foreach (array_unique(array_map('absint', $submission_ids)) as $submission_id) {
+			self::sync_submission_status($submission_id);
+		}
+		return max(0, (int) $count) + max(0, (int) $processing_count);
+	}
+
 	public static function retry_delivery(int $delivery_id): bool
 	{
 		global $wpdb;

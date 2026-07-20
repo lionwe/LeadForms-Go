@@ -49,6 +49,17 @@ final class Settings
 		self::$cache = null;
 	}
 
+	public static function disable_integrations(): void
+	{
+		$stored = get_option(self::OPTION, []);
+		$stored = is_array($stored) ? array_replace_recursive(self::defaults(), $stored) : self::defaults();
+		foreach (['telegram', 'sheets', 'crm'] as $section) {
+			$stored[$section]['enabled'] = false;
+		}
+		update_option(self::OPTION, self::sanitize($stored), false);
+		self::$cache = null;
+	}
+
 	public static function sanitize(mixed $input): array
 	{
 		$input = is_array($input) ? $input : [];

@@ -93,7 +93,7 @@ class FormValidator {
 class PhoneMask {
 	constructor(input) {
 		this.input = input;
-		this.pattern = input.dataset.mask || '';
+		this.pattern = input.dataset.leadformsGoMask || '';
 		this.prefixDigits = (this.pattern.split('0', 1)[0].match(/\d/g) || []).join('');
 		if (!this.pattern) return;
 		input.addEventListener('input', () => this.apply());
@@ -130,7 +130,7 @@ class LeadForm {
 		this.requestId = this.createRequestId();
 		this.addHoneypot();
 		this.validator = new FormValidator(this.form, this.config.messages);
-		this.form.querySelectorAll('input[data-mask]').forEach((input) => new PhoneMask(input));
+		this.form.querySelectorAll('input[data-leadforms-go-mask]').forEach((input) => new PhoneMask(input));
 		this.form.noValidate = true;
 		this.form.addEventListener('submit', (event) => this.submit(event), true);
 	}

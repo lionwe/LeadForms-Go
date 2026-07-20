@@ -24,6 +24,8 @@ For visual forms, one shared field structure can contain translations for multip
 
 Submissions are stored locally before connector jobs are added to the WP-Cron queue. Temporary network and server failures are retried with exponential backoff. The History screen provides delivery filters, attempt timelines, and manual retry controls.
 
+If the WordPress database is moved to another domain, LeadForms Go detects the change, disables integrations, and cancels active deliveries. This prevents inherited queued submissions from being sent to the previous site's destinations. Existing history is retained for administrator review and can be removed manually when appropriate.
+
 For production sites with low traffic or `DISABLE_WP_CRON` enabled, configure a real system cron request to WordPress cron. The dashboard reports stalled or unscheduled queue work.
 
 If the WP-Cron loopback request fails, an overdue delivery can be processed by a server-side fallback at the end of a later WordPress request. The fallback processes one delivery per request and uses the same queue lock and atomic claim as WP-Cron. A real system cron remains recommended for sites without regular traffic.
