@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Submission_Validator
 {
-	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ttclid', 'landing_page', 'document_referrer', 'visited_at'];
 	private const MAX_PAYLOAD_FIELDS = 50;
 	private const MAX_PAYLOAD_KEY_LENGTH = 190;
 	private const MAX_PAYLOAD_VALUE_LENGTH = 1000;
@@ -66,6 +66,12 @@ final class Submission_Validator
 		$errors = [];
 		foreach ($schema as $field) {
 			$name = (string) $field['key'];
+			if (! self::condition_matches((array) ($field['condition'] ?? []), $submitted)) continue;
+			if (($field['type'] ?? '') === 'hidden') {
+				$value = sanitize_text_field((string) ($field['default_value'] ?? ''));
+				if ($value !== '') $data[$name] = $value;
+				continue;
+			}
 			$value = isset($submitted[$name]) && is_scalar($submitted[$name]) ? trim((string) $submitted[$name]) : '';
 			if (($field['type'] ?? '') === 'checkbox') {
 				if (! self::is_checked($value)) {
@@ -76,6 +82,10 @@ final class Submission_Validator
 			}
 			if ($value === '') {
 				if (! empty($field['required'])) $errors[$name] = (string) ($messages['required'] ?? __('Заповніть це поле.', 'leadforms-go'));
+				continue;
+			}
+			if (in_array($field['type'] ?? '', ['select', 'radio'], true) && ! in_array($value, (array) ($field['options'] ?? []), true)) {
+				$errors[$name] = (string) ($messages['invalid'] ?? __('Перевірте правильність значення.', 'leadforms-go'));
 				continue;
 			}
 			$error = self::value_error($value, (string) $field['type'], null, $messages);
@@ -159,6 +169,20 @@ final class Submission_Validator
 				$data[$key] = sanitize_text_field($truncated);
 			}
 		}
+	}
+
+	private static function condition_matches(array $condition, array $submitted): bool
+	{
+		if ($condition === []) return true;
+		$field = sanitize_key((string) ($condition['field'] ?? ''));
+		$current = isset($submitted[$field]) && is_scalar($submitted[$field]) ? trim((string) $submitted[$field]) : '';
+		$expected = (string) ($condition['value'] ?? '');
+		return match ($condition['operator'] ?? 'equals') {
+			'not_equals' => $current !== $expected,
+			'contains' => $expected !== '' && str_contains($current, $expected),
+			'filled' => $current !== '',
+			default => $current === $expected,
+		};
 	}
 
 	private static function is_checked(string $value): bool

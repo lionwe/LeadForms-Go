@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 namespace {
+	define('MINUTE_IN_SECONDS', 60);
+	define('DAY_IN_SECONDS', 86400);
 	class WP_Error
 	{
 		public function __construct(private string $code, private string $message, private mixed $data = null) {}
@@ -25,6 +27,7 @@ namespace {
 		return $protocols !== [] && ! in_array($scheme, $protocols, true) ? '' : filter_var($value, FILTER_SANITIZE_URL);
 	}
 	function wp_http_validate_url(string $value): bool { return filter_var($value, FILTER_VALIDATE_URL) !== false; }
+	function wp_salt(string $scheme = 'auth'): string { return 'test-salt-' . $scheme; }
 	function wp_kses(string $html, array $allowed): string
 	{
 		$tags = implode('', array_map(static fn (string $tag): string => '<' . $tag . '>', array_keys($allowed)));

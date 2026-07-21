@@ -19,13 +19,16 @@ final class Form_Builder
 			'city' => ['type' => 'text', 'label' => __('Місто', 'leadforms-go'), 'name' => __('Місто', 'leadforms-go'), 'placeholder' => __('Ваше місто', 'leadforms-go'), 'required' => false],
 			'message' => ['type' => 'textarea', 'label' => __('Повідомлення', 'leadforms-go'), 'name' => __('Повідомлення', 'leadforms-go'), 'placeholder' => __('Ваше повідомлення', 'leadforms-go'), 'required' => false],
 			'consent' => ['type' => 'checkbox', 'label' => __('Згода на обробку даних', 'leadforms-go'), 'name' => __('Згода на обробку даних', 'leadforms-go'), 'placeholder' => '', 'required' => true],
+			'select' => ['type' => 'select', 'label' => __('Вибір зі списку', 'leadforms-go'), 'name' => __('Вибір зі списку', 'leadforms-go'), 'placeholder' => __('Оберіть варіант', 'leadforms-go'), 'required' => false, 'options' => ['option_1', 'option_2']],
+			'radio' => ['type' => 'radio', 'label' => __('Один варіант', 'leadforms-go'), 'name' => __('Один варіант', 'leadforms-go'), 'placeholder' => '', 'required' => false, 'options' => ['option_1', 'option_2']],
+			'hidden' => ['type' => 'hidden', 'label' => __('Приховане поле', 'leadforms-go'), 'name' => __('Приховане поле', 'leadforms-go'), 'placeholder' => '', 'required' => false, 'default_value' => ''],
 		];
 	}
 
 	public static function sanitize_schema(mixed $schema): array
 	{
 		if (! is_array($schema)) return [];
-		$allowed_types = ['text', 'tel', 'email', 'textarea', 'checkbox'];
+		$allowed_types = ['text', 'tel', 'email', 'textarea', 'checkbox', 'select', 'radio', 'hidden'];
 		$tiles = self::tiles();
 		$clean = [];
 		$key_counts = [];
@@ -59,8 +62,18 @@ final class Form_Builder
 				'placeholder' => sanitize_text_field((string) ($field['placeholder'] ?? '')),
 				'required' => ! empty($field['required']),
 				'mask' => $type === 'tel' ? sanitize_text_field((string) ($field['mask'] ?? '')) : '',
+				'options' => in_array($type, ['select', 'radio'], true) ? self::sanitize_options($field['options'] ?? []) : [],
+				'default_value' => $type === 'hidden' ? sanitize_text_field((string) ($field['default_value'] ?? '')) : '',
+				'condition' => self::sanitize_condition($field['condition'] ?? []),
 			];
 		}
+		$keys = array_column($clean, 'key');
+		foreach ($clean as &$field) {
+			if (($field['condition']['field'] ?? '') === $field['key'] || ! in_array($field['condition']['field'] ?? '', $keys, true)) {
+				$field['condition'] = [];
+			}
+		}
+		unset($field);
 		return $clean;
 	}
 
@@ -138,22 +151,47 @@ final class Form_Builder
 			$id = $id_prefix . sanitize_html_class($field['id']);
 			$required = $field['required'] ? ' required' : '';
 			$required_mark = $field['required'] ? '*' : '';
-			if ($field['type'] === 'checkbox') {
-				$lines[] = '  <label class="leadforms-go-checkbox" for="' . esc_attr($id) . '">';
-				$lines[] = '    <input id="' . esc_attr($id) . '" type="checkbox" name="' . esc_attr($field['key']) . '" value="1"' . $required . '>';
-				$lines[] = '    <span class="leadforms-go-checkbox__label">' . esc_html($field['label'] . $required_mark) . '</span>';
-				$lines[] = '  </label>';
+			if ($field['type'] === 'hidden') {
+				$lines[] = '  <input id="' . esc_attr($id) . '" type="hidden" name="' . esc_attr($field['key']) . '" value="' . esc_attr($field['default_value']) . '">';
 				continue;
 			}
-			$lines[] = '  <label for="' . esc_attr($id) . '">';
-			$lines[] = '    <span>' . esc_html($field['label'] . $required_mark) . '</span>';
+			$condition = self::condition_class((array) ($field['condition'] ?? []));
+			$lines[] = '  <div class="leadforms-go-field' . $condition . '">';
+			if ($field['type'] === 'checkbox') {
+				$lines[] = '    <label class="leadforms-go-checkbox" for="' . esc_attr($id) . '">';
+				$lines[] = '      <input id="' . esc_attr($id) . '" type="checkbox" name="' . esc_attr($field['key']) . '" value="1"' . $required . '>';
+				$lines[] = '      <span class="leadforms-go-checkbox__label">' . esc_html($field['label'] . $required_mark) . '</span>';
+				$lines[] = '    </label>';
+				$lines[] = '  </div>';
+				continue;
+			}
+			if ($field['type'] === 'radio') {
+				$lines[] = '    <span class="leadforms-go-radio__legend">' . esc_html($field['label'] . $required_mark) . '</span>';
+				foreach ((array) $field['options'] as $index => $option) {
+					$option_id = $id . '-' . ($index + 1);
+					$option_label = (string) ($field['option_labels'][$index] ?? $option);
+					$lines[] = '      <label for="' . esc_attr($option_id) . '"><input id="' . esc_attr($option_id) . '" type="radio" name="' . esc_attr($field['key']) . '" value="' . esc_attr($option) . '"' . ($index === 0 ? $required : '') . '> <span>' . esc_html($option_label) . '</span></label>';
+				}
+				$lines[] = '  </div>';
+				continue;
+			}
+			$lines[] = '    <label for="' . esc_attr($id) . '">';
+			$lines[] = '      <span>' . esc_html($field['label'] . $required_mark) . '</span>';
 			if ($field['type'] === 'textarea') {
-				$lines[] = '    <textarea id="' . esc_attr($id) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $required . '></textarea>';
+				$lines[] = '      <textarea id="' . esc_attr($id) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $required . '></textarea>';
+			} elseif ($field['type'] === 'select') {
+				$lines[] = '      <select id="' . esc_attr($id) . '" name="' . esc_attr($field['key']) . '"' . $required . '>';
+				$lines[] = '        <option value="">' . esc_html($field['placeholder']) . '</option>';
+				foreach ((array) $field['options'] as $index => $option) {
+					$lines[] = '        <option value="' . esc_attr($option) . '">' . esc_html((string) ($field['option_labels'][$index] ?? $option)) . '</option>';
+				}
+				$lines[] = '      </select>';
 			} else {
 				$mask = $field['type'] === 'tel' && $field['mask'] !== '' ? ' data-leadforms-go-mask="' . esc_attr($field['mask']) . '" data-min-length="12"' : '';
-				$lines[] = '    <input id="' . esc_attr($id) . '" type="' . esc_attr($field['type']) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $mask . $required . '>';
+				$lines[] = '      <input id="' . esc_attr($id) . '" type="' . esc_attr($field['type']) . '" name="' . esc_attr($field['key']) . '" placeholder="' . esc_attr($field['placeholder']) . '"' . $mask . $required . '>';
 			}
-			$lines[] = '  </label>';
+			$lines[] = '    </label>';
+			$lines[] = '  </div>';
 		}
 		$lines[] = '  <button class="btn btn--primary" type="submit">';
 		if ($button_icon['position'] === 'before' && $icon_markup !== '') {
@@ -227,11 +265,41 @@ final class Form_Builder
 		return str_contains(strtolower($clean), '<svg') ? $clean : '';
 	}
 
+	private static function sanitize_options(mixed $options): array
+	{
+		if (! is_array($options)) return [];
+		$clean = [];
+		foreach (array_slice($options, 0, 50) as $option) {
+			$value = sanitize_key(is_scalar($option) ? (string) $option : '');
+			if ($value !== '' && ! in_array($value, $clean, true)) $clean[] = $value;
+		}
+		return $clean;
+	}
+
+	private static function sanitize_condition(mixed $condition): array
+	{
+		if (! is_array($condition)) return [];
+		$field = sanitize_key((string) ($condition['field'] ?? ''));
+		$operator = sanitize_key((string) ($condition['operator'] ?? 'equals'));
+		if ($field === '' || ! in_array($operator, ['equals', 'not_equals', 'contains', 'filled'], true)) return [];
+		return ['field' => $field, 'operator' => $operator, 'value' => sanitize_text_field((string) ($condition['value'] ?? ''))];
+	}
+
+	private static function condition_class(array $condition): string
+	{
+		if ($condition === []) return '';
+		$encoded = wp_json_encode($condition, JSON_UNESCAPED_UNICODE);
+		return is_string($encoded) ? ' lfg-condition--' . esc_attr(rawurlencode($encoded)) : '';
+	}
+
 	private static function allowed_html(): array
 	{
 		$tags = wp_kses_allowed_html('post');
-		$common = ['class' => true, 'id' => true, 'aria-label' => true, 'aria-describedby' => true, 'aria-invalid' => true];
+		$common = ['class' => true, 'id' => true, 'aria-label' => true, 'aria-describedby' => true, 'aria-invalid' => true, 'data-lfg-condition-field' => true, 'data-lfg-condition-operator' => true, 'data-lfg-condition-value' => true];
+		$tags['div'] = array_replace($tags['div'] ?? [], $common);
 		$tags['form'] = $common + ['action' => true, 'method' => true, 'novalidate' => true, 'autocomplete' => true];
+		$tags['fieldset'] = $common + ['disabled' => true];
+		$tags['legend'] = $common;
 		$tags['input'] = $common + [
 			'type' => true,
 			'name' => true,

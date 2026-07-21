@@ -29,6 +29,10 @@ final class Plugin
 		add_action('wp_enqueue_scripts', [$this, 'register_assets']);
 		add_action('wp_ajax_leadforms_go_submit', [$this, 'submit']);
 		add_action('wp_ajax_nopriv_leadforms_go_submit', [$this, 'submit']);
+		add_action('wp_ajax_leadforms_go_dispatch', [$this, 'dispatch']);
+		add_action('wp_ajax_nopriv_leadforms_go_dispatch', [$this, 'dispatch']);
+		add_action('wp_ajax_leadforms_go_view', [$this, 'record_view']);
+		add_action('wp_ajax_nopriv_leadforms_go_view', [$this, 'record_view']);
 		if (is_admin()) (new Admin())->boot();
 	}
 
@@ -42,7 +46,12 @@ final class Plugin
 	{
 		$script_version = @filemtime(LEADFORMS_GO_DIR . 'assets/frontend.js') ?: LEADFORMS_GO_VERSION;
 		$style_version = @filemtime(LEADFORMS_GO_DIR . 'assets/frontend.css') ?: LEADFORMS_GO_VERSION;
-		wp_register_script('leadforms-go', LEADFORMS_GO_URL . 'assets/frontend.js', [], (string) $script_version, true);
+		$dependencies = [];
+		if (Turnstile::enabled()) {
+			wp_register_script('leadforms-go-turnstile', 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', [], null, ['strategy' => 'defer', 'in_footer' => true]);
+			$dependencies[] = 'leadforms-go-turnstile';
+		}
+		wp_register_script('leadforms-go', LEADFORMS_GO_URL . 'assets/frontend.js', $dependencies, (string) $script_version, true);
 		wp_register_style('leadforms-go', LEADFORMS_GO_URL . 'assets/frontend.css', [], (string) $style_version);
 	}
 
@@ -71,6 +80,10 @@ final class Plugin
 		}
 		$masked_form_code = preg_replace('/\bdata-mask(?=\s*=)/i', 'data-leadforms-go-mask', $form_code);
 		if (is_string($masked_form_code)) $form_code = $masked_form_code;
+		if (Turnstile::enabled()) {
+			$with_turnstile = preg_replace('/<\/form>\s*$/i', Turnstile::markup() . '</form>', $form_code, 1);
+			if (is_string($with_turnstile)) $form_code = $with_turnstile;
+		}
 		$this->enqueue_frontend();
 		$messages = wp_json_encode($translation['messages'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 		$security = Submission_Security::context((int) $form['id']);
@@ -93,6 +106,8 @@ final class Plugin
 			'successDuration' => 4000,
 			'requestTimeout' => 20000,
 			'attributionTtl' => (int) (Settings::section('general')['attribution_days'] ?? 30) * DAY_IN_SECONDS,
+			'turnstileSiteKey' => Turnstile::enabled() ? Turnstile::site_key() : '',
+			'turnstileAction' => Turnstile::ACTION,
 			'messages' => [
 				'sending' => __('Відправка…', 'leadforms-go'),
 				'success' => __('Дякуємо! Форму успішно відправлено.', 'leadforms-go'),
@@ -115,6 +130,7 @@ final class Plugin
 
 	public function submit(): void
 	{
+		$request_started_at = microtime(true);
 		if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') wp_send_json_error(['message' => __('Некоректний метод запиту.', 'leadforms-go')], 405);
 		if (! Submission_Security::valid_origin()) wp_send_json_error(['message' => __('Некоректне джерело запиту.', 'leadforms-go')], 403);
 		$form_id = isset($_POST['form_id']) ? absint($_POST['form_id']) : 0;
@@ -137,6 +153,10 @@ final class Plugin
 		if (! Submission_Security::consume_rate_limit($form_id)) wp_send_json_error(['message' => __('Забагато спроб. Спробуйте пізніше.', 'leadforms-go')], 429);
 		$request_id = isset($_POST['request_id']) && is_scalar($_POST['request_id']) ? sanitize_text_field(wp_unslash((string) $_POST['request_id'])) : '';
 		if (! Submission_Security::valid_request_id($request_id)) wp_send_json_error(['message' => __('Некоректний ідентифікатор запиту.', 'leadforms-go')], 400);
+		$turnstile_token = isset($decoded['cf-turnstile-response']) && is_scalar($decoded['cf-turnstile-response']) ? sanitize_text_field((string) $decoded['cf-turnstile-response']) : '';
+		unset($decoded['cf-turnstile-response']);
+		$captcha = Turnstile::verify($turnstile_token, $request_id);
+		if (is_wp_error($captcha)) wp_send_json_error(['message' => $captcha->get_error_message()], 422);
 		$validation = Submission_Validator::validate($form, $decoded, $translation['messages']);
 		$data = $validation['data'];
 		$errors = $validation['errors'];
@@ -149,7 +169,16 @@ final class Plugin
 		$submission = Repositories::create_submission($form_id, $data, $referer, $locale, $request_id);
 		$submission_id = $submission['id'];
 		if ($submission_id <= 0) wp_send_json_error(['message' => __('Не вдалося зберегти заявку. Спробуйте ще раз.', 'leadforms-go')], 500);
-		if (! $submission['created']) wp_send_json_success(['message' => $translation['messages']['success'], 'submission_id' => $submission_id, 'duplicate' => true]);
+		if (! $submission['created']) {
+			$existing = Repositories::submission($submission_id);
+			$pending_deliveries = count(array_filter((array) ($existing['deliveries'] ?? []), static fn(array $delivery): bool => in_array($delivery['status'] ?? '', ['queued', 'processing'], true)));
+			wp_send_json_success($this->success_data($form, (string) $translation['messages']['success'], $submission_id, [
+				'duplicate' => true,
+				'deliveries' => $pending_deliveries,
+				'dispatch_token' => $pending_deliveries > 0 ? Submission_Security::dispatch_token($submission_id) : '',
+				'processing_ms' => (int) round((microtime(true) - $request_started_at) * 1000),
+			]));
+		}
 		$delivery_count = $this->queue?->queue_submission($submission_id) ?? 0;
 		if (! $this->legacy_addons_active()) {
 			try {
@@ -159,7 +188,48 @@ final class Plugin
 			}
 		}
 		do_action('leadforms_go_submission_processed', $submission_id, $data, $referer);
-		wp_send_json_success(['message' => $translation['messages']['success'], 'submission_id' => $submission_id, 'deliveries' => $delivery_count]);
+		wp_send_json_success($this->success_data($form, (string) $translation['messages']['success'], $submission_id, [
+			'deliveries' => $delivery_count,
+			'dispatch_token' => $delivery_count > 0 ? Submission_Security::dispatch_token($submission_id) : '',
+			'processing_ms' => (int) round((microtime(true) - $request_started_at) * 1000),
+		]));
+	}
+
+	public function dispatch(): void
+	{
+		if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') wp_send_json_error([], 405);
+		if (! Submission_Security::valid_origin()) wp_send_json_error([], 403);
+		$submission_id = isset($_POST['submission_id']) ? absint($_POST['submission_id']) : 0;
+		$token = isset($_POST['dispatch_token']) && is_scalar($_POST['dispatch_token']) ? sanitize_text_field(wp_unslash((string) $_POST['dispatch_token'])) : '';
+		if (! Submission_Security::verify_dispatch_token($submission_id, $token)) wp_send_json_error([], 403);
+		if (! Repositories::submission($submission_id)) wp_send_json_error([], 404);
+
+		$this->queue?->process('client');
+		$submission = Repositories::submission($submission_id);
+		$statuses = array_count_values(array_map(static fn(array $delivery): string => sanitize_key((string) ($delivery['status'] ?? 'unknown')), (array) ($submission['deliveries'] ?? [])));
+		$pending = (int) ($statuses['queued'] ?? 0) + (int) ($statuses['processing'] ?? 0);
+		$failed = (int) ($statuses['failed'] ?? 0) + (int) ($statuses['cancelled'] ?? 0);
+		wp_send_json_success([
+			'submission_id' => $submission_id,
+			'delivered' => (int) ($statuses['sent'] ?? 0) + (int) ($statuses['success'] ?? 0),
+			'pending' => $pending,
+			'failed' => $failed,
+			'success' => $pending === 0 && $failed === 0,
+		]);
+	}
+
+	public function record_view(): void
+	{
+		if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? '')) !== 'POST') wp_send_json_error([], 405);
+		if (! Submission_Security::valid_origin()) wp_send_json_error([], 403);
+		$form_id = isset($_POST['form_id']) ? absint($_POST['form_id']) : 0;
+		$nonce = isset($_POST['nonce']) && is_scalar($_POST['nonce']) ? sanitize_text_field(wp_unslash((string) $_POST['nonce'])) : '';
+		$form = $form_id > 0 ? Repositories::form($form_id) : null;
+		if (! $form || empty($form['active']) || ! Submission_Security::verify_nonce($form_id, $nonce)) wp_send_json_error([], 403);
+		$source = isset($_POST['utm_source']) && is_scalar($_POST['utm_source']) ? wp_unslash((string) $_POST['utm_source']) : '';
+		$campaign = isset($_POST['utm_campaign']) && is_scalar($_POST['utm_campaign']) ? wp_unslash((string) $_POST['utm_campaign']) : '';
+		Repositories::record_view($form_id, $source, $campaign);
+		wp_send_json_success();
 	}
 
 	public function capture_submission(array $data, ?int $form_id = null, string $referer = ''): int
@@ -182,5 +252,19 @@ final class Plugin
 	{
 		$active = (array) get_option('active_plugins', []);
 		return (bool) array_intersect($active, ['reIntegrationSheets/reIntegrationSheets.php', 'reIntegrationTelegram/reIntegrationTelegram.php', 'reIntegrationCRM/reIntegrationCRM.php']);
+	}
+
+	private function success_data(array $form, string $message, int $submission_id, array $extra = []): array
+	{
+		$action = in_array($form['success_action'] ?? '', ['message', 'hide', 'redirect'], true) ? (string) $form['success_action'] : 'message';
+		$redirect = $action === 'redirect' ? wp_validate_redirect(esc_url_raw((string) ($form['success_redirect_url'] ?? '')), '') : '';
+		if ($action === 'redirect' && $redirect === '') $action = 'message';
+		return array_merge([
+			'message' => $message,
+			'submission_id' => $submission_id,
+			'success_action' => $action,
+			'redirect_url' => $redirect,
+			'success_duration' => min(60, max(1, (int) ($form['success_duration'] ?? 4))) * 1000,
+		], $extra);
 	}
 }

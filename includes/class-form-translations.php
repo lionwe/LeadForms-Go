@@ -97,6 +97,9 @@ final class Form_Translations
 				'city' => ['label' => 'City', 'placeholder' => 'Your city'],
 				'message' => ['label' => 'Message', 'placeholder' => 'Your message'],
 				'consent' => ['label' => 'Consent to personal data processing', 'placeholder' => ''],
+				'select' => ['label' => 'Select an option', 'placeholder' => 'Choose an option'],
+				'radio' => ['label' => 'Choose one option', 'placeholder' => ''],
+				'hidden' => ['label' => 'Hidden field', 'placeholder' => ''],
 			];
 		}
 		return [
@@ -108,6 +111,9 @@ final class Form_Translations
 			'city' => ['label' => 'Місто', 'placeholder' => 'Ваше місто'],
 			'message' => ['label' => 'Повідомлення', 'placeholder' => 'Ваше повідомлення'],
 			'consent' => ['label' => 'Згода на обробку даних', 'placeholder' => ''],
+			'select' => ['label' => 'Вибір зі списку', 'placeholder' => 'Оберіть варіант'],
+			'radio' => ['label' => 'Один варіант', 'placeholder' => ''],
+			'hidden' => ['label' => 'Приховане поле', 'placeholder' => ''],
 		];
 	}
 
@@ -232,6 +238,7 @@ final class Form_Translations
 			$text = (array) ($translation['fields'][$key] ?? []);
 			$field['label'] = (string) (($text['label'] ?? '') ?: ($field['label'] ?? $key));
 			$field['placeholder'] = (string) ($text['placeholder'] ?? ($field['placeholder'] ?? ''));
+			$field['option_labels'] = self::sanitize_options($text['options'] ?? []);
 		}
 		unset($field);
 		return $schema;

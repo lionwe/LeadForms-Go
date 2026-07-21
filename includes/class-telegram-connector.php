@@ -36,7 +36,25 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		$chat_id = substr(sanitize_text_field($chat_id), 0, 64);
 		if ($token === '' || $chat_id === '') return new Result(false, 0, __('Потрібні токен Telegram-бота та ID чату.', 'leadforms-go'), false);
 
-		return $this->result(wp_remote_post($this->endpoint($token, 'getChat'), $this->request_args(['body' => ['chat_id' => $chat_id]])));
+		$bot_response = wp_remote_post($this->endpoint($token, 'getMe'), $this->request_args());
+		$bot_result = $this->result($bot_response);
+		if (! $bot_result->success) return $bot_result;
+		$chat_response = wp_remote_post($this->endpoint($token, 'getChat'), $this->request_args(['body' => ['chat_id' => $chat_id]]));
+		$chat_result = $this->result($chat_response);
+		if (! $chat_result->success) return $chat_result;
+
+		$key = hash_hmac('sha256', $chat_id . '|' . hash('sha256', $token), wp_salt('auth'));
+		$confirmed = (array) get_option('leadforms_go_telegram_confirmed', []);
+		$first_success = empty($confirmed[$key]);
+		$text = '<b>✅ LeadForms Go підключено</b>' . "\n\n" . 'Тестове повідомлення успішно надіслано з WordPress-сайту <b>' . esc_html((string) wp_parse_url(home_url('/'), PHP_URL_HOST)) . '</b>.';
+		if ($first_success) $text .= "\n\n" . '<b>Що далі:</b>' . "\n" . '1. Відкрийте потрібну форму в LeadForms Go.' . "\n" . '2. На вкладці «Інтеграції» увімкніть Telegram.' . "\n" . '3. Налаштуйте шаблон і надішліть тестову заявку.';
+		$sent = wp_remote_post($this->endpoint($token, 'sendMessage'), $this->request_args(['body' => ['chat_id' => $chat_id, 'text' => $text, 'parse_mode' => 'HTML']]));
+		$sent_result = $this->result($sent);
+		if (! $sent_result->success) return $sent_result;
+		$confirmed[$key] = time();
+		if (count($confirmed) > 50) $confirmed = array_slice($confirmed, -50, null, true);
+		update_option('leadforms_go_telegram_confirmed', $confirmed, false);
+		return new Result(true, $sent_result->http_code, $first_success ? __('Підключення успішне. У Telegram надіслано підтвердження та коротку інструкцію.', 'leadforms-go') : __('Підключення успішне. У Telegram надіслано тестове підтвердження.', 'leadforms-go'), false);
 	}
 
 	public function test_route(array $route, array $payload, int $form_id, string $locale): Result
@@ -59,11 +77,7 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		$template = $this->localized((array) ($route['templates'] ?? []), $locale);
 		$mode = Telegram_Template::sanitize_mode((string) ($route['parse_mode'] ?? 'plain'));
 		if ($template === '') {
-			$presented = Submission_Presenter::for_telegram($request->payload, $request->form_id, $locale);
-			$lines = [__('Нова заявка з форми:', 'leadforms-go')];
-			foreach ($presented as $key => $value) $lines[] = sanitize_text_field((string) $key) . ': ' . sanitize_textarea_field((string) $value);
-			if ($request->referer !== '') $lines[] = __('Джерело:', 'leadforms-go') . ' ' . esc_url_raw($request->referer);
-			$text = Telegram_Template::fit_plain(implode("\n", $lines));
+			$text = Submission_Presenter::telegram_message($request->payload, $request->form_id, $locale, $request->referer, (string) ($variables['form_name'] ?? ''));
 			$mode = 'plain';
 		} else {
 			$text = Telegram_Template::render($template, $mode, $variables);
@@ -72,7 +86,8 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		if (! Telegram_Template::within_limit($text)) return new Result(false, 0, __('Повідомлення Telegram після підстановки змінних перевищує 4096 символів.', 'leadforms-go'), false);
 		$body = ['chat_id' => $settings['chat_id'], 'text' => $text];
 		if ($mode !== 'plain') $body['parse_mode'] = $mode;
-		if (! empty($route['topic_id'])) $body['message_thread_id'] = absint($route['topic_id']);
+		$topic_id = absint(($route['topic_id'] ?? 0) ?: ($settings['topic_id'] ?? 0));
+		if ($topic_id > 0) $body['message_thread_id'] = $topic_id;
 		$buttons = Telegram_Template::render_buttons($this->localized_buttons((array) ($route['buttons'] ?? []), $locale), $variables);
 		if ($buttons !== []) $body['reply_markup'] = wp_json_encode(['inline_keyboard' => $buttons]);
 		$response = wp_remote_post($this->endpoint($settings['token'], 'sendMessage'), $this->request_args(['body' => $body]));
@@ -89,9 +104,11 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 	private function resolved_settings(array $route): array
 	{
 		$global = $this->settings();
+		$profile = ! empty($route['profile_id']) ? Connection_Profiles::find((string) $route['profile_id'], 'telegram') : null;
 		return [
-			'token' => sanitize_text_field((string) ($global['token'] ?? '')),
-			'chat_id' => sanitize_text_field((string) (($route['chat_id'] ?? '') !== '' ? $route['chat_id'] : ($global['chat_id'] ?? ''))),
+			'token' => sanitize_text_field((string) (($profile['token'] ?? '') ?: ($global['token'] ?? ''))),
+			'chat_id' => sanitize_text_field((string) (($profile['chat_id'] ?? '') ?: (($route['chat_id'] ?? '') !== '' ? $route['chat_id'] : ($global['chat_id'] ?? '')))),
+			'topic_id' => absint($profile['topic_id'] ?? 0),
 		];
 	}
 

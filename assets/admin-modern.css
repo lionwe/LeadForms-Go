@@ -326,20 +326,46 @@
 	table-layout: fixed;
 }
 
-.lfg-recent-submissions th:nth-child(1) {
-	width: 3.75rem;
+.lfg-recent-table th:nth-child(1) {
+	width: 10rem;
 }
 
-.lfg-recent-submissions th:nth-child(2) {
-	width: 5rem;
+.lfg-recent-table th:nth-child(2) {
+	width: auto;
 }
 
-.lfg-recent-submissions th:nth-child(3) {
+.lfg-recent-table th:nth-child(3) {
+	width: 12rem;
+}
+
+.lfg-recent-table th:nth-child(4) {
+	width: 16rem;
+}
+
+.lfg-recent-table th:nth-child(5) {
 	width: 6rem;
 }
 
 .lfg-recent-submissions td {
 	min-width: 0;
+}
+
+.lfg-recent-submission {
+	display: grid;
+	gap: 0.1875rem;
+}
+
+.lfg-recent-submission strong {
+	overflow: hidden;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lfg-recent-submission time {
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
 }
 
 .lfg-dashboard-source {
@@ -711,6 +737,64 @@
 	border-radius: 0 0 0.75rem 0.75rem;
 }
 
+.lfg-history-table {
+	width: 100%;
+	table-layout: fixed;
+}
+
+.lfg-history-table .check-column {
+	width: 2.75rem;
+}
+
+.lfg-history-table th:nth-child(2) {
+	width: 10rem;
+}
+
+.lfg-history-table th:nth-child(3) {
+	width: auto;
+}
+
+.lfg-history-table th:nth-child(4) {
+	width: 12rem;
+}
+
+.lfg-history-table th:nth-child(5) {
+	width: 16rem;
+}
+
+.lfg-history-table th:nth-child(6) {
+	width: 6rem;
+}
+
+.lfg-payload-preview {
+	display: -webkit-box;
+	max-width: none;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-height: 1.5;
+}
+
+.lfg-delivery-stack .lfg-delivery-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	max-width: 100%;
+}
+
+.lfg-delivery-stack .lfg-delivery-status strong {
+	overflow: hidden;
+	font-size: 0.75rem;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lfg-delivery-stack .lfg-delivery-status > span {
+	font-size: 0.75rem;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
 .lfg-submission-summary > div,
 .lfg-delivery-card,
 .lfg-submission-data,
@@ -812,3 +896,4 @@
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 }
+.lfg-utm-sources{display:grid;gap:.625rem}.lfg-utm-source{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border:1px solid var(--lfg-border);border-radius:.625rem;background:var(--lfg-surface)}.lfg-condition-settings{margin-top:1rem}.lfg-condition-settings summary{cursor:pointer;font-weight:600}

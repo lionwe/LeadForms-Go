@@ -92,9 +92,10 @@ final class Sheets_Connector extends Abstract_Connector implements Contextual_Co
 	private function resolved_settings(array $route): array
 	{
 		$global = $this->settings();
+		$profile = ! empty($route['profile_id']) ? Connection_Profiles::find((string) $route['profile_id'], 'sheets') : null;
 		return [
-			'spreadsheet_id' => sanitize_text_field((string) (($route['spreadsheet_id'] ?? '') !== '' ? $route['spreadsheet_id'] : ($global['spreadsheet_id'] ?? ''))),
-			'sheet_name' => sanitize_text_field((string) (($route['sheet_name'] ?? '') !== '' ? $route['sheet_name'] : ($global['sheet_name'] ?? ''))),
+			'spreadsheet_id' => sanitize_text_field((string) (($profile['spreadsheet_id'] ?? '') ?: (($route['spreadsheet_id'] ?? '') !== '' ? $route['spreadsheet_id'] : ($global['spreadsheet_id'] ?? '')))),
+			'sheet_name' => sanitize_text_field((string) (($profile['sheet_name'] ?? '') ?: (($route['sheet_name'] ?? '') !== '' ? $route['sheet_name'] : ($global['sheet_name'] ?? '')))),
 		];
 	}
 }

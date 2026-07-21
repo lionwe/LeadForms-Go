@@ -56,6 +56,14 @@ class LeadFormsGoIntegrations {
 	}
 
 	handleInput(event) {
+		const profile = event.target.closest('[data-lfg-profile]');
+		if (profile) {
+			const connector = profile.dataset.lfgProfile;
+			const ids = [...this.root.querySelectorAll(`[data-lfg-profile="${connector}"]:checked`)].map((input) => input.value);
+			this.setPath(`${connector}.profile_ids`, ids);
+			this.sync();
+			return;
+		}
 		const input = event.target.closest('[data-lfg-route-input]');
 		if (input) {
 			let value = input.value;

@@ -32,6 +32,7 @@ final class Admin_Integrations
 			<?php $this->test_data($schema); ?>
 
 			<?php $this->route_start('telegram', 'Telegram', $config['telegram'], $state_options); ?>
+			<?php echo $this->profile_selector('telegram', (array) ($config['telegram']['profile_ids'] ?? [])); ?>
 			<div class="lfg-route-grid">
 				<label><span><?php esc_html_e('Chat ID', 'leadforms-go'); ?></span><input type="text" data-lfg-route-input="telegram.chat_id" value="<?php echo esc_attr((string) $config['telegram']['chat_id']); ?>" placeholder="<?php esc_attr_e('Порожньо — глобальний chat ID', 'leadforms-go'); ?>"></label>
 				<label><span><?php esc_html_e('Topic ID', 'leadforms-go'); ?></span><input type="number" min="0" data-lfg-route-input="telegram.topic_id" value="<?php echo esc_attr((string) $config['telegram']['topic_id']); ?>"></label>
@@ -49,6 +50,7 @@ final class Admin_Integrations
 			<?php $this->route_end('telegram'); ?>
 
 			<?php $this->route_start('sheets', 'Google Sheets', $config['sheets'], $state_options); ?>
+			<?php echo $this->profile_selector('sheets', (array) ($config['sheets']['profile_ids'] ?? [])); ?>
 			<div class="lfg-route-grid">
 				<label><span><?php esc_html_e('Посилання або Spreadsheet ID', 'leadforms-go'); ?></span><input type="text" data-lfg-route-input="sheets.spreadsheet_id" value="<?php echo esc_attr((string) $config['sheets']['spreadsheet_id']); ?>"></label>
 				<label><span><?php esc_html_e('Аркуш', 'leadforms-go'); ?></span><select data-lfg-route-input="sheets.sheet_name" data-lfg-sheet-select><option value="<?php echo esc_attr((string) $config['sheets']['sheet_name']); ?>"><?php echo esc_html((string) ($config['sheets']['sheet_name'] ?: __('Спочатку завантажте аркуші', 'leadforms-go'))); ?></option></select></label>
@@ -61,6 +63,7 @@ final class Admin_Integrations
 			<?php $this->route_end('sheets'); ?>
 
 			<?php $this->route_start('crm', 'CRM G-PLUS', $config['crm'], $state_options); ?>
+			<?php echo $this->profile_selector('crm', (array) ($config['crm']['profile_ids'] ?? [])); ?>
 			<div class="lfg-route-grid"><label><span><?php esc_html_e('Advertising / Form ID', 'leadforms-go'); ?></span><input type="text" data-lfg-route-input="crm.adv_id" value="<?php echo esc_attr((string) $config['crm']['adv_id']); ?>" placeholder="<?php esc_attr_e('Порожньо — глобальне значення', 'leadforms-go'); ?>"></label></div>
 			<div class="lfg-crm-mapping"><div class="lfg-sheet-columns__heading"><strong><?php esc_html_e('Mapping полів CRM', 'leadforms-go'); ?></strong><button type="button" class="button" data-lfg-add-crm-mapping><?php esc_html_e('Додати mapping', 'leadforms-go'); ?></button></div><div data-lfg-crm-mapping-rows></div></div>
 			<div class="lfg-route-preview"><strong><?php esc_html_e('Preview payload', 'leadforms-go'); ?></strong><pre data-lfg-route-payload="crm"></pre></div>
@@ -84,7 +87,8 @@ final class Admin_Integrations
 		$connectors = Connectors::all();
 		$connector = $connectors[$connector_key] ?? null;
 		if (! $connector instanceof Contextual_Connector_Interface) wp_send_json_error(['message' => __('Маршрут недоступний.', 'leadforms-go')], 400);
-		$route = $config[$connector_key] ?? [];
+		$destinations = Route_Config::destinations($config, $connector_key);
+		$route = (array) ($destinations[0]['route'] ?? ($config[$connector_key] ?? []));
 		$route_valid = $connector->validate_route(is_array($route) ? $route : []);
 		if (is_wp_error($route_valid)) wp_send_json_error(['message' => $route_valid->get_error_message()], 422);
 		$payload = Submission_Validator::sanitize_payload($this->json_post('payload'));
@@ -92,6 +96,7 @@ final class Admin_Integrations
 		$locale = Form_Translations::normalize_locale($this->scalar($_POST['locale'] ?? '')) ?: (string) $form['default_locale'];
 		$submission = Repositories::create_submission($form_id, $payload, home_url('/'), $locale, 'test_' . wp_generate_uuid4(), true);
 		if ($submission['id'] <= 0) wp_send_json_error(['message' => __('Не вдалося створити тестову заявку.', 'leadforms-go')], 500);
+		$config[$connector_key] = $route;
 		$config[$connector_key]['state'] = 'enabled';
 		$queue = new Delivery_Queue();
 		$delivery_id = $queue->queue_test_submission((int) $submission['id'], $connector_key, $config);
@@ -187,6 +192,18 @@ final class Admin_Integrations
 	private function route_end(string $key): void
 	{
 		echo '<div class="lfg-route-test"><button type="button" class="button button-primary" data-lfg-test-route="' . esc_attr($key) . '">' . esc_html__('Надіслати тестову заявку', 'leadforms-go') . '</button><span data-lfg-route-result aria-live="polite"></span></div></div></article>';
+	}
+
+	private function profile_selector(string $connector, array $selected): string
+	{
+		$profiles = Connection_Profiles::all($connector);
+		if ($profiles === []) return '<p class="lfg-route-profiles__empty"><a href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Створіть reusable profile у налаштуваннях, щоб додати кілька destinations.', 'leadforms-go') . '</a></p>';
+		$html = '<fieldset class="lfg-route-profiles"><legend>' . esc_html__('Додаткові destinations із профілів', 'leadforms-go') . '</legend>';
+		foreach ($profiles as $profile) {
+			$id = (string) ($profile['id'] ?? '');
+			$html .= '<label><input type="checkbox" data-lfg-profile="' . esc_attr($connector) . '" value="' . esc_attr($id) . '" ' . checked(in_array($id, $selected, true), true, false) . '> ' . esc_html((string) ($profile['name'] ?? $id)) . '</label>';
+		}
+		return $html . '</fieldset>';
 	}
 
 	private function delivery_response(int $delivery_id, int $submission_id): array

@@ -20,6 +20,8 @@ final class Settings
 		$all['crm']['token'] = self::constant_or_secret('LEADFORMS_GO_CRM_TOKEN', (string) $all['crm']['token']);
 		$all['crm']['partner_id'] = self::constant_or_value('LEADFORMS_GO_CRM_PARTNER_ID', (string) $all['crm']['partner_id']);
 		$all['crm']['adv_id'] = self::constant_or_value('LEADFORMS_GO_CRM_ADV_ID', (string) $all['crm']['adv_id']);
+		$all['antispam']['turnstile_site_key'] = self::constant_or_value('LEADFORMS_GO_TURNSTILE_SITE_KEY', (string) $all['antispam']['turnstile_site_key']);
+		$all['antispam']['turnstile_secret_key'] = self::constant_or_secret('LEADFORMS_GO_TURNSTILE_SECRET_KEY', (string) $all['antispam']['turnstile_secret_key']);
 		self::$cache = $all;
 		return self::$cache;
 	}
@@ -41,7 +43,7 @@ final class Settings
 
 	public static function update_section(string $section, array $values): void
 	{
-		if (! in_array($section, ['general', 'telegram', 'sheets', 'crm'], true)) return;
+		if (! in_array($section, ['general', 'telegram', 'sheets', 'crm', 'antispam'], true)) return;
 		$stored = get_option(self::OPTION, []);
 		$stored = is_array($stored) ? array_replace_recursive(self::defaults(), $stored) : self::defaults();
 		$stored[$section] = $values;
@@ -85,6 +87,11 @@ final class Settings
 				'retention_days' => min(3650, max(0, absint($input['general']['retention_days'] ?? 180))),
 				'attribution_days' => min(365, max(0, absint($input['general']['attribution_days'] ?? 30))),
 			],
+			'antispam' => [
+				'provider' => ($input['antispam']['provider'] ?? '') === 'turnstile' ? 'turnstile' : 'none',
+				'turnstile_site_key' => $text('antispam', 'turnstile_site_key'),
+				'turnstile_secret_key' => $secret('antispam', 'turnstile_secret_key'),
+			],
 			'telegram' => [
 				'enabled' => ! empty($input['telegram']['enabled']),
 				'token' => $secret('telegram', 'token'),
@@ -110,7 +117,7 @@ final class Settings
 		$stored = get_option(self::OPTION, []);
 		if (! is_array($stored)) return;
 		$changed = false;
-		foreach ([['telegram', 'token', 'LEADFORMS_GO_TELEGRAM_TOKEN'], ['crm', 'token', 'LEADFORMS_GO_CRM_TOKEN']] as [$section, $key, $constant]) {
+		foreach ([['telegram', 'token', 'LEADFORMS_GO_TELEGRAM_TOKEN'], ['crm', 'token', 'LEADFORMS_GO_CRM_TOKEN'], ['antispam', 'turnstile_secret_key', 'LEADFORMS_GO_TURNSTILE_SECRET_KEY']] as [$section, $key, $constant]) {
 			$value = (string) ($stored[$section][$key] ?? '');
 			if (defined($constant) && $value !== '') {
 				$stored[$section][$key] = '';
@@ -173,6 +180,7 @@ final class Settings
 	{
 		return [
 			'general' => ['retain_data' => true, 'retention_days' => 180, 'attribution_days' => 30],
+			'antispam' => ['provider' => 'none', 'turnstile_site_key' => '', 'turnstile_secret_key' => ''],
 			'telegram' => ['enabled' => false, 'token' => '', 'chat_id' => ''],
 			'sheets' => ['enabled' => false, 'spreadsheet_id' => '', 'sheet_name' => 'Sheet1', 'fields_order' => ''],
 			'crm' => ['enabled' => false, 'partner_id' => '', 'token' => '', 'adv_id' => ''],

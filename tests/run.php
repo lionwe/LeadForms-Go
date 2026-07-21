@@ -6,10 +6,12 @@ require __DIR__ . '/bootstrap.php';
 require dirname(__DIR__) . '/includes/class-telegram-template.php';
 require dirname(__DIR__) . '/includes/class-route-config.php';
 require dirname(__DIR__) . '/includes/class-google-sheets-service.php';
+require dirname(__DIR__) . '/includes/class-submission-security.php';
 
 use LeadFormsGo\Google_Sheets_Service;
 use LeadFormsGo\Route_Config;
 use LeadFormsGo\Telegram_Template;
+use LeadFormsGo\Submission_Security;
 
 $failures = [];
 $assert = static function (bool $condition, string $message) use (&$failures): void {
@@ -33,8 +35,13 @@ $config = Route_Config::sanitize([
 	'sheets' => ['columns' => [['header' => 'Name', 'type' => 'field', 'source' => 'first_name']]],
 ], $schema);
 $assert($config['telegram']['state'] === 'enabled', 'Route state must be preserved.');
+$assert(Route_Config::VERSION === 2, 'Route snapshots must use the multiple-destination schema.');
+$assert($config['telegram']['profile_ids'] === [], 'Routes without profiles must keep an empty profile list.');
 $assert($config['sheets']['columns'][0]['source'] === 'first_name', 'Valid mapping must be preserved.');
 $assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'phone'], ['phone' => '+380']) === '+380', 'Mapping must resolve payload values.');
+$dispatch_token = Submission_Security::dispatch_token(42);
+$assert(Submission_Security::verify_dispatch_token(42, $dispatch_token), 'Dispatch token must verify for its submission.');
+$assert(! Submission_Security::verify_dispatch_token(43, $dispatch_token), 'Dispatch token must not verify for another submission.');
 $snapshot = Route_Config::snapshot($config, 'telegram', ['form_name' => 'Original', 'submitted_at' => '2026-07-13 10:00:00']);
 $snapshot_route = Route_Config::route_from_snapshot($snapshot, 'telegram');
 $assert($snapshot_route['_context']['form_name'] === 'Original', 'Route snapshot context must be immutable.');

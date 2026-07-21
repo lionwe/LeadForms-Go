@@ -16,6 +16,7 @@ final class Delivery_Queue
 	private const LOCK_TTL = 5 * MINUTE_IN_SECONDS;
 	private const FALLBACK_GRACE = 15;
 	private const CRON_TOLERANCE = MINUTE_IN_SECONDS;
+	private const CRON_CONNECT_TIMEOUT = 1.0;
 	private bool $pending = false;
 	private bool $queued_in_request = false;
 
@@ -52,10 +53,12 @@ final class Delivery_Queue
 				$count += Repositories::create_delivery($submission_id, $connector->key()) > 0 ? 1 : 0;
 				continue;
 			}
-			$route = is_array($config[$connector->key()] ?? null) ? $config[$connector->key()] : [];
-			if (! Route_Config::is_enabled($connector->key(), $route)) continue;
-			++$enabled;
-			$count += Repositories::create_delivery($submission_id, $connector->key(), Route_Config::snapshot($config, $connector->key(), $context)) > 0 ? 1 : 0;
+			foreach (Route_Config::destinations($config, $connector->key()) as $destination) {
+				++$enabled;
+				$destination_id = (string) ($destination['id'] ?? 'default');
+				$delivery_key = $destination_id === 'default' ? $connector->key() : $connector->key() . '__' . substr(hash('sha256', $destination_id), 0, 12);
+				$count += Repositories::create_delivery($submission_id, $delivery_key, Route_Config::snapshot_route($connector->key(), (array) ($destination['route'] ?? []), $context, $destination_id)) > 0 ? 1 : 0;
+			}
 		}
 		if ($count === 0) {
 			Repositories::finish_submission($submission_id, $enabled === 0);
@@ -100,7 +103,8 @@ final class Delivery_Queue
 			foreach (Repositories::due_deliveries($batch_size) as $delivery) {
 				$delivery_id = (int) $delivery['id'];
 				if (! Repositories::claim_delivery($delivery_id)) continue;
-				$key = sanitize_key((string) $delivery['connector']);
+				$delivery_key = sanitize_key((string) $delivery['connector']);
+				$key = explode('__', $delivery_key, 2)[0];
 				$snapshot = json_decode((string) ($delivery['route_snapshot'] ?? ''), true);
 				$snapshot = is_array($snapshot) ? $snapshot : [];
 				$route = Route_Config::route_from_snapshot($snapshot, $key);
@@ -137,7 +141,7 @@ final class Delivery_Queue
 				if (microtime(true) - $started_at >= self::TIME_BUDGET) break;
 			}
 			update_option('leadforms_go_queue_last_run', time(), false);
-			update_option('leadforms_go_queue_last_source', $source === 'fallback' ? 'fallback' : 'cron', false);
+			update_option('leadforms_go_queue_last_source', in_array($source, ['cron', 'fallback', 'client'], true) ? $source : 'cron', false);
 			if ($source === 'fallback') update_option('leadforms_go_queue_fallback_last_run', time(), false);
 		} finally {
 			$this->release_lock();
@@ -156,6 +160,9 @@ final class Delivery_Queue
 	public function maybe_process_fallback(): void
 	{
 		if (! $this->pending || wp_doing_cron() || (defined('WP_CLI') && WP_CLI)) return;
+		// Never make the visitor wait for an external connector request.
+		// queue_submission() already spawns WP-Cron; fallback is for a later request only.
+		if ($this->queued_in_request) return;
 		if ($this->has_active_lock()) return;
 
 		$summary = Repositories::queue_summary();
@@ -166,10 +173,8 @@ final class Delivery_Queue
 		if ($summary['due'] < 1 || $summary['processing'] > 0) return;
 
 		$oldest_due = $this->database_time_to_timestamp((string) $summary['oldest_due_at']);
-		$grace = $this->queued_in_request ? 0 : self::FALLBACK_GRACE;
-		if ($oldest_due === null || $oldest_due > time() - $grace) return;
+		if ($oldest_due === null || $oldest_due > time() - self::FALLBACK_GRACE) return;
 
-		if ($this->queued_in_request && function_exists('fastcgi_finish_request')) fastcgi_finish_request();
 		$this->process('fallback');
 	}
 
@@ -243,7 +248,28 @@ final class Delivery_Queue
 			if ($scheduled !== false) wp_unschedule_event($scheduled, self::HOOK);
 			wp_schedule_single_event($timestamp, self::HOOK);
 		}
-		if ($spawn && $timestamp <= time() + 5 && function_exists('spawn_cron')) spawn_cron(time());
+		if ($spawn && $timestamp <= time() + 5) $this->spawn_cron();
+	}
+
+	private function spawn_cron(): void
+	{
+		if (! function_exists('spawn_cron')) return;
+		// WordPress allows only 10 ms for the default non-blocking loopback request.
+		// Local Windows environments often cannot connect within that window, so the
+		// scheduled delivery waits for a later visitor request and the fallback path.
+		$extend_timeout = static function (array $request): array {
+			if (isset($request['args']) && is_array($request['args'])) {
+				$request['args']['timeout'] = self::CRON_CONNECT_TIMEOUT;
+				$request['args']['blocking'] = true;
+			}
+			return $request;
+		};
+		add_filter('cron_request', $extend_timeout, PHP_INT_MAX);
+		try {
+			spawn_cron(time());
+		} finally {
+			remove_filter('cron_request', $extend_timeout, PHP_INT_MAX);
+		}
 	}
 
 	private function acquire_lock(): bool

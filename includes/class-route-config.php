@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Route_Config
 {
-	public const VERSION = 1;
+	public const VERSION = 2;
 	private const STATES = ['inherit', 'enabled', 'disabled'];
 	private const SYSTEM_VARIABLES = ['page_url', 'form_name', 'submitted_at', 'locale', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
 
@@ -16,6 +16,7 @@ final class Route_Config
 			'version' => self::VERSION,
 			'telegram' => [
 				'state' => 'inherit',
+				'profile_ids' => [],
 				'chat_id' => '',
 				'topic_id' => 0,
 				'parse_mode' => 'plain',
@@ -24,6 +25,7 @@ final class Route_Config
 			],
 			'sheets' => [
 				'state' => 'inherit',
+				'profile_ids' => [],
 				'spreadsheet_id' => '',
 				'sheet_name' => '',
 				'write_mode' => 'append',
@@ -32,6 +34,7 @@ final class Route_Config
 			],
 			'crm' => [
 				'state' => 'inherit',
+				'profile_ids' => [],
 				'adv_id' => '',
 				'mapping' => [],
 			],
@@ -89,6 +92,7 @@ final class Route_Config
 			'version' => self::VERSION,
 			'telegram' => [
 				'state' => self::state($telegram['state'] ?? $defaults['telegram']['state']),
+				'profile_ids' => self::profile_ids($telegram['profile_ids'] ?? [], 'telegram'),
 				'chat_id' => sanitize_text_field((string) ($telegram['chat_id'] ?? '')),
 				'topic_id' => absint($telegram['topic_id'] ?? 0),
 				'parse_mode' => Telegram_Template::sanitize_mode((string) ($telegram['parse_mode'] ?? 'plain')),
@@ -97,6 +101,7 @@ final class Route_Config
 			],
 			'sheets' => [
 				'state' => self::state($sheets['state'] ?? $defaults['sheets']['state']),
+				'profile_ids' => self::profile_ids($sheets['profile_ids'] ?? [], 'sheets'),
 				'spreadsheet_id' => self::spreadsheet_id((string) ($sheets['spreadsheet_id'] ?? '')),
 				'sheet_name' => sanitize_text_field((string) ($sheets['sheet_name'] ?? '')),
 				'write_mode' => ($sheets['write_mode'] ?? '') === 'update' ? 'update' : 'append',
@@ -105,6 +110,7 @@ final class Route_Config
 			],
 			'crm' => [
 				'state' => self::state($crm['state'] ?? $defaults['crm']['state']),
+				'profile_ids' => self::profile_ids($crm['profile_ids'] ?? [], 'crm'),
 				'adv_id' => sanitize_text_field((string) ($crm['adv_id'] ?? '')),
 				'mapping' => $mapping,
 			],
@@ -123,23 +129,49 @@ final class Route_Config
 	{
 		$connector = sanitize_key($connector);
 		$route = is_array($config[$connector] ?? null) ? $config[$connector] : [];
+		return self::snapshot_route($connector, $route, $context, 'default');
+	}
+
+	public static function snapshot_route(string $connector, array $route, array $context = [], string $destination_id = 'default'): array
+	{
+		$connector = sanitize_key($connector);
 		$global = Settings::section($connector);
 		$route['state'] = self::is_enabled($connector, $route) ? 'enabled' : 'disabled';
-		if ($connector === 'telegram' && empty($route['chat_id'])) $route['chat_id'] = sanitize_text_field((string) ($global['chat_id'] ?? ''));
-		if ($connector === 'sheets') {
+		$uses_profile = ! empty($route['profile_id']);
+		if (! $uses_profile && $connector === 'telegram' && empty($route['chat_id'])) $route['chat_id'] = sanitize_text_field((string) ($global['chat_id'] ?? ''));
+		if (! $uses_profile && $connector === 'sheets') {
 			if (empty($route['spreadsheet_id'])) $route['spreadsheet_id'] = self::spreadsheet_id((string) ($global['spreadsheet_id'] ?? ''));
 			if (empty($route['sheet_name'])) $route['sheet_name'] = sanitize_text_field((string) ($global['sheet_name'] ?? ''));
 		}
-		if ($connector === 'crm' && empty($route['adv_id'])) $route['adv_id'] = sanitize_text_field((string) ($global['adv_id'] ?? ''));
+		if (! $uses_profile && $connector === 'crm' && empty($route['adv_id'])) $route['adv_id'] = sanitize_text_field((string) ($global['adv_id'] ?? ''));
 		return [
 			'version' => self::VERSION,
 			'connector' => $connector,
+			'destination_id' => sanitize_key($destination_id) ?: 'default',
 			'route' => $route,
 			'context' => [
 				'form_name' => sanitize_text_field((string) ($context['form_name'] ?? '')),
 				'submitted_at' => sanitize_text_field((string) ($context['submitted_at'] ?? '')),
 			],
 		];
+	}
+
+	public static function destinations(array $config, string $connector): array
+	{
+		$connector = sanitize_key($connector);
+		$route = is_array($config[$connector] ?? null) ? $config[$connector] : [];
+		$destinations = [];
+		if (self::is_enabled($connector, $route)) $destinations[] = ['id' => 'default', 'route' => $route];
+		foreach ((array) ($route['profile_ids'] ?? []) as $profile_id) {
+			$profile = Connection_Profiles::find((string) $profile_id, $connector);
+			if (! $profile) continue;
+			$profile_route = $route;
+			$profile_route['state'] = 'enabled';
+			$profile_route['profile_id'] = (string) $profile['id'];
+			$profile_route['profile_name'] = (string) $profile['name'];
+			$destinations[] = ['id' => (string) $profile['id'], 'route' => $profile_route];
+		}
+		return $destinations;
 	}
 
 	public static function route_from_snapshot(array $snapshot, string $connector): array
@@ -197,6 +229,13 @@ final class Route_Config
 			$mapped = array_filter((array) ($config['sheets']['columns'] ?? []), static fn (array $column): bool => ($column['source'] ?? '') === $dedupe_key);
 			if ($mapped === []) return new \WP_Error('unmapped_dedupe_key', __('Поле пошуку має бути додане до колонок Google Sheets.', 'leadforms-go'));
 		}
+		foreach (Connectors::all() as $connector) {
+			if (! in_array($connector->key(), ['telegram', 'sheets', 'crm'], true) || ! $connector instanceof Contextual_Connector_Interface) continue;
+			foreach (self::destinations($config, $connector->key()) as $destination) {
+				$result = $connector->validate_route((array) ($destination['route'] ?? []));
+				if (is_wp_error($result)) return new \WP_Error('invalid_route_' . $connector->key(), sprintf(__('%1$s: %2$s', 'leadforms-go'), strtoupper($connector->key()), $result->get_error_message()));
+			}
+		}
 		return true;
 	}
 
@@ -212,6 +251,17 @@ final class Route_Config
 	{
 		$state = sanitize_key(is_scalar($state) ? (string) $state : 'inherit');
 		return in_array($state, self::STATES, true) ? $state : 'inherit';
+	}
+
+	private static function profile_ids(mixed $ids, string $connector): array
+	{
+		if (! is_array($ids)) return [];
+		$clean = [];
+		foreach (array_slice($ids, 0, 20) as $id) {
+			$id = sanitize_key(is_scalar($id) ? (string) $id : '');
+			if ($id !== '' && Connection_Profiles::find($id, $connector) && ! in_array($id, $clean, true)) $clean[] = $id;
+		}
+		return $clean;
 	}
 
 	private static function spreadsheet_id(string $value): string

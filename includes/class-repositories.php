@@ -21,7 +21,7 @@ final class Repositories
 		return (new Form_Repository())->find($id, $legacy);
 	}
 
-	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = [], array $routing_config = []): int|false
+	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = [], array $routing_config = [], array $success = []): int|false
 	{
 		$now = current_time('mysql');
 		$data = [
@@ -35,10 +35,20 @@ final class Repositories
 			'translations' => wp_json_encode(Form_Translations::sanitize($translations), JSON_UNESCAPED_UNICODE),
 			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema), JSON_UNESCAPED_UNICODE),
 			'routing_version' => Route_Config::VERSION,
+			'success_action' => in_array($success['action'] ?? '', ['message', 'hide', 'redirect'], true) ? $success['action'] : 'message',
+			'success_redirect_url' => self::safe_redirect_url((string) ($success['redirect_url'] ?? '')),
+			'success_duration' => min(60, max(1, absint($success['duration'] ?? 4))),
 			'active' => $active ? 1 : 0,
 			'updated_at' => $now,
 		];
 		return (new Form_Repository())->save($id, $data);
+	}
+
+	private static function safe_redirect_url(string $url): string
+	{
+		$url = esc_url_raw($url, ['http', 'https']);
+		if ($url === '') return '';
+		return wp_validate_redirect($url, '');
 	}
 
 	public static function delete_form(int $id): bool
@@ -322,6 +332,11 @@ final class Repositories
 		return (new Statistics_Repository())->dashboard();
 	}
 
+	public static function record_view(int $form_id, string $source = '', string $campaign = ''): bool
+	{
+		return (new Statistics_Repository())->record_view($form_id, $source, $campaign);
+	}
+
 	public static function purge_submissions_older_than(int $days): int
 	{
 		global $wpdb;
@@ -390,7 +405,7 @@ final class Repositories
 		if (! empty($filters['exclude_test'])) $conditions[] = 's.is_test = 0';
 		if (! empty($filters['form_id'])) { $conditions[] = 's.form_id = %d'; $args[] = absint($filters['form_id']); }
 		if (! empty($filters['status']) && in_array($filters['status'], ['queued', 'processing', 'success', 'failed'], true)) { $conditions[] = 's.status = %s'; $args[] = $filters['status']; }
-		if (! empty($filters['connector'])) { $tables = Database::tables(); $conditions[] = "EXISTS (SELECT 1 FROM {$tables['deliveries']} df WHERE df.submission_id = s.id AND df.connector = %s)"; $args[] = sanitize_key($filters['connector']); }
+		if (! empty($filters['connector'])) { $tables = Database::tables(); $key = sanitize_key($filters['connector']); $conditions[] = "EXISTS (SELECT 1 FROM {$tables['deliveries']} df WHERE df.submission_id = s.id AND (df.connector = %s OR df.connector LIKE %s))"; $args[] = $key; $args[] = $wpdb->esc_like($key . '__') . '%'; }
 		$date_from = self::valid_date($filters['date_from'] ?? '');
 		$date_to = self::valid_date($filters['date_to'] ?? '');
 		if ($date_from !== '') { $conditions[] = 's.created_at >= %s'; $args[] = $date_from . ' 00:00:00'; }

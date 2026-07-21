@@ -252,3 +252,4 @@
 		grid-column: auto;
 	}
 }
+.lfg-route-profiles{display:flex;flex-wrap:wrap;gap:.75rem;margin:0 0 1rem;padding:.875rem;border:1px solid var(--lfg-border);border-radius:.625rem}.lfg-route-profiles legend{padding:0 .375rem;font-weight:600}.lfg-route-profiles label{display:flex;align-items:center;gap:.375rem}.lfg-route-profiles__empty{margin:.5rem 0 1rem}.lfg-connection-profiles{margin-top:1rem}.lfg-connection-profiles__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem}.lfg-profile-card{display:grid;gap:.75rem;padding:1rem;border:1px solid var(--lfg-border);border-radius:.75rem}.lfg-profile-card label{display:grid;gap:.375rem}.lfg-profile-card .lfg-profile-delete{display:flex;grid-template-columns:none;align-items:center;color:#b32d2e}
