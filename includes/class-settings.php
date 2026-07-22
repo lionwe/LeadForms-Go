@@ -15,6 +15,10 @@ final class Settings
 		if (self::$cache !== null) return self::$cache;
 		$value = get_option(self::OPTION, []);
 		$all = is_array($value) ? array_replace_recursive(self::defaults(), $value) : self::defaults();
+		if (is_array($value) && isset($value['general']['phone_countries']) && is_array($value['general']['phone_countries'])) {
+			$all['general']['phone_countries'] = self::sanitize_phone_countries($value['general']['phone_countries']);
+		}
+		if (empty($all['general']['phone_country_selector_configured'])) $all['general']['phone_country_selector'] = false;
 		$all['telegram']['token'] = self::constant_or_secret('LEADFORMS_GO_TELEGRAM_TOKEN', (string) $all['telegram']['token']);
 		$all['telegram']['chat_id'] = self::constant_or_value('LEADFORMS_GO_TELEGRAM_CHAT_ID', (string) $all['telegram']['chat_id']);
 		$all['crm']['token'] = self::constant_or_secret('LEADFORMS_GO_CRM_TOKEN', (string) $all['crm']['token']);
@@ -49,6 +53,53 @@ final class Settings
 		$stored[$section] = $values;
 		update_option(self::OPTION, self::sanitize($stored), false);
 		self::$cache = null;
+	}
+
+	/** @return array<string, array{name:string, dial:string, mask:string, min:int, max:int}> */
+	public static function phone_countries(): array
+	{
+		return [
+			'UA' => ['name' => __('Україна', 'leadforms-go'), 'dial' => '380', 'mask' => '+380 (00) 000-00-00', 'min' => 9, 'max' => 9],
+			'PL' => ['name' => __('Польща', 'leadforms-go'), 'dial' => '48', 'mask' => '+48 000 000 000', 'min' => 9, 'max' => 9],
+			'DE' => ['name' => __('Німеччина', 'leadforms-go'), 'dial' => '49', 'mask' => '+49 000 000000000', 'min' => 7, 'max' => 11],
+			'CZ' => ['name' => __('Чехія', 'leadforms-go'), 'dial' => '420', 'mask' => '+420 000 000 000', 'min' => 9, 'max' => 9],
+			'SK' => ['name' => __('Словаччина', 'leadforms-go'), 'dial' => '421', 'mask' => '+421 000 000 000', 'min' => 9, 'max' => 9],
+			'RO' => ['name' => __('Румунія', 'leadforms-go'), 'dial' => '40', 'mask' => '+40 000 000 000', 'min' => 9, 'max' => 9],
+			'MD' => ['name' => __('Молдова', 'leadforms-go'), 'dial' => '373', 'mask' => '+373 00 000 000', 'min' => 8, 'max' => 8],
+			'HU' => ['name' => __('Угорщина', 'leadforms-go'), 'dial' => '36', 'mask' => '+36 00 000 0000', 'min' => 8, 'max' => 9],
+			'LT' => ['name' => __('Литва', 'leadforms-go'), 'dial' => '370', 'mask' => '+370 000 00000', 'min' => 8, 'max' => 8],
+			'LV' => ['name' => __('Латвія', 'leadforms-go'), 'dial' => '371', 'mask' => '+371 000 00000', 'min' => 8, 'max' => 8],
+			'EE' => ['name' => __('Естонія', 'leadforms-go'), 'dial' => '372', 'mask' => '+372 0000 0000', 'min' => 7, 'max' => 8],
+			'FR' => ['name' => __('Франція', 'leadforms-go'), 'dial' => '33', 'mask' => '+33 0 00 00 00 00', 'min' => 9, 'max' => 9],
+			'IT' => ['name' => __('Італія', 'leadforms-go'), 'dial' => '39', 'mask' => '+39 000 000 0000', 'min' => 9, 'max' => 10],
+			'ES' => ['name' => __('Іспанія', 'leadforms-go'), 'dial' => '34', 'mask' => '+34 000 000 000', 'min' => 9, 'max' => 9],
+			'PT' => ['name' => __('Португалія', 'leadforms-go'), 'dial' => '351', 'mask' => '+351 000 000 000', 'min' => 9, 'max' => 9],
+			'NL' => ['name' => __('Нідерланди', 'leadforms-go'), 'dial' => '31', 'mask' => '+31 00 00000000', 'min' => 9, 'max' => 9],
+			'BE' => ['name' => __('Бельгія', 'leadforms-go'), 'dial' => '32', 'mask' => '+32 000 00 00 00', 'min' => 8, 'max' => 9],
+			'AT' => ['name' => __('Австрія', 'leadforms-go'), 'dial' => '43', 'mask' => '+43 000 0000000', 'min' => 7, 'max' => 10],
+			'CH' => ['name' => __('Швейцарія', 'leadforms-go'), 'dial' => '41', 'mask' => '+41 00 000 00 00', 'min' => 9, 'max' => 9],
+			'GB' => ['name' => __('Велика Британія', 'leadforms-go'), 'dial' => '44', 'mask' => '+44 0000 000000', 'min' => 9, 'max' => 10],
+			'IE' => ['name' => __('Ірландія', 'leadforms-go'), 'dial' => '353', 'mask' => '+353 00 000 0000', 'min' => 9, 'max' => 9],
+			'US' => ['name' => __('США', 'leadforms-go'), 'dial' => '1', 'mask' => '+1 (000) 000-0000', 'min' => 10, 'max' => 10],
+			'CA' => ['name' => __('Канада', 'leadforms-go'), 'dial' => '1', 'mask' => '+1 (000) 000-0000', 'min' => 10, 'max' => 10],
+			'IL' => ['name' => __('Ізраїль', 'leadforms-go'), 'dial' => '972', 'mask' => '+972 00 000 0000', 'min' => 8, 'max' => 9],
+			'TR' => ['name' => __('Туреччина', 'leadforms-go'), 'dial' => '90', 'mask' => '+90 000 000 0000', 'min' => 10, 'max' => 10],
+			'GE' => ['name' => __('Грузія', 'leadforms-go'), 'dial' => '995', 'mask' => '+995 000 000 000', 'min' => 9, 'max' => 9],
+		];
+	}
+
+	/** @return array{enabled:bool, default:string, display:string, allowed:array<int, string>, countries:array<string, array{name:string, dial:string, mask:string, min:int, max:int}>} */
+	public static function phone_configuration(): array
+	{
+		$general = self::section('general');
+		$countries = self::phone_countries();
+		$allowed = array_values(array_intersect(array_keys($countries), (array) ($general['phone_countries'] ?? [])));
+		if ($allowed === []) $allowed = ['UA'];
+		$default = strtoupper((string) ($general['phone_default_country'] ?? 'UA'));
+		if (! in_array($default, $allowed, true)) $default = $allowed[0];
+		$display = (string) ($general['phone_country_display'] ?? 'code');
+		if (! in_array($display, ['name_code', 'code', 'flag_code', 'flag'], true)) $display = 'code';
+		return ['enabled' => ! empty($general['phone_country_selector_configured']) && ! empty($general['phone_country_selector']), 'default' => $default, 'display' => $display, 'allowed' => $allowed, 'countries' => array_intersect_key($countries, array_flip($allowed))];
 	}
 
 	public static function disable_integrations(): void
@@ -86,6 +137,11 @@ final class Settings
 				'retain_data' => ! empty($input['general']['retain_data']),
 				'retention_days' => min(3650, max(0, absint($input['general']['retention_days'] ?? 180))),
 				'attribution_days' => min(365, max(0, absint($input['general']['attribution_days'] ?? 30))),
+				'phone_country_selector' => ! empty($input['general']['phone_country_selector']),
+				'phone_country_selector_configured' => ! empty($input['general']['phone_country_selector_configured']),
+				'phone_default_country' => self::sanitize_phone_default($input['general'] ?? []),
+				'phone_country_display' => in_array(($input['general']['phone_country_display'] ?? ''), ['name_code', 'code', 'flag_code', 'flag'], true) ? (string) $input['general']['phone_country_display'] : 'code',
+				'phone_countries' => self::sanitize_phone_countries($input['general']['phone_countries'] ?? []),
 			],
 			'antispam' => [
 				'provider' => ($input['antispam']['provider'] ?? '') === 'turnstile' ? 'turnstile' : 'none',
@@ -179,7 +235,7 @@ final class Settings
 	private static function defaults(): array
 	{
 		return [
-			'general' => ['retain_data' => true, 'retention_days' => 180, 'attribution_days' => 30],
+			'general' => ['retain_data' => true, 'retention_days' => 180, 'attribution_days' => 30, 'phone_country_selector' => false, 'phone_country_selector_configured' => false, 'phone_default_country' => 'UA', 'phone_country_display' => 'code', 'phone_countries' => ['UA', 'PL', 'DE', 'CZ', 'SK', 'GB', 'US', 'CA']],
 			'antispam' => ['provider' => 'none', 'turnstile_site_key' => '', 'turnstile_secret_key' => ''],
 			'telegram' => ['enabled' => false, 'token' => '', 'chat_id' => ''],
 			'sheets' => ['enabled' => false, 'spreadsheet_id' => '', 'sheet_name' => 'Sheet1', 'fields_order' => ''],
@@ -207,5 +263,20 @@ final class Settings
 		$value = trim($value);
 		if (preg_match('~/(?:spreadsheets/)?(?:u/\d+/)?d/([A-Za-z0-9_-]+)~', $value, $match)) $value = $match[1];
 		return (string) preg_replace('/[^A-Za-z0-9_-]/', '', $value);
+	}
+
+	private static function sanitize_phone_countries(mixed $value): array
+	{
+		$value = is_array($value) ? array_map(static fn (mixed $country): string => strtoupper(sanitize_key((string) $country)), $value) : [];
+		$value = array_values(array_unique(array_intersect(array_keys(self::phone_countries()), $value)));
+		return $value !== [] ? $value : ['UA'];
+	}
+
+	private static function sanitize_phone_default(mixed $general): string
+	{
+		$general = is_array($general) ? $general : [];
+		$allowed = self::sanitize_phone_countries($general['phone_countries'] ?? []);
+		$default = strtoupper(sanitize_key((string) ($general['phone_default_country'] ?? 'UA')));
+		return in_array($default, $allowed, true) ? $default : $allowed[0];
 	}
 }

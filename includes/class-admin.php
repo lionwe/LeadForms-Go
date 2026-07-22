@@ -254,10 +254,18 @@ final class Admin
 		$this->require_capability('manage_options');
 		$s = Settings::all(); $name = 'leadforms_go_settings';
 		$this->open(__('Налаштування', 'leadforms-go'));
-		echo '<form method="post" action="options.php">'; settings_fields('leadforms_go'); echo '<div class="lfg-settings-grid">';
+		echo '<form method="post" action="options.php" class="lfg-settings-form" data-lfg-settings-form>'; settings_fields('leadforms_go');
+		echo '<nav class="lfg-settings-tabs" aria-label="' . esc_attr__('Розділи налаштувань', 'leadforms-go') . '" role="tablist">';
+		foreach (['general' => __('Основні', 'leadforms-go'), 'forms' => __('Форми й телефон', 'leadforms-go'), 'security' => __('Безпека', 'leadforms-go'), 'integrations' => __('Інтеграції', 'leadforms-go'), 'profiles' => __('Профілі', 'leadforms-go')] as $tab => $label) {
+			echo '<button type="button" class="lfg-settings-tab' . ($tab === 'general' ? ' is-active' : '') . '" role="tab" aria-selected="' . ($tab === 'general' ? 'true' : 'false') . '" aria-controls="lfg-settings-panel-' . esc_attr($tab) . '" data-lfg-settings-tab="' . esc_attr($tab) . '">' . esc_html($label) . '</button>';
+		}
+		echo '</nav><div id="lfg-settings-panel-general" class="lfg-settings-panel is-active" role="tabpanel" data-lfg-settings-panel="general"><div class="lfg-settings-grid">';
 		echo '<section class="lfg-card lfg-settings"><h2>' . esc_html__('Зберігання даних', 'leadforms-go') . '</h2><label><input type="checkbox" name="' . esc_attr($name . '[general][retain_data]') . '" value="1" ' . checked(! empty($s['general']['retain_data']), true, false) . '> ' . esc_html__('Зберігати форми та заявки після видалення плагіна', 'leadforms-go') . '</label><label><span>' . esc_html__('Строк зберігання заявок, днів', 'leadforms-go') . '</span><input class="small-text" type="number" min="0" max="3650" name="' . esc_attr($name . '[general][retention_days]') . '" value="' . esc_attr((string) ($s['general']['retention_days'] ?? 180)) . '"><small>' . esc_html__('0 — не видаляти автоматично.', 'leadforms-go') . '</small></label><label><span>' . esc_html__('Строк зберігання UTM у браузері, днів', 'leadforms-go') . '</span><input class="small-text" type="number" min="0" max="365" name="' . esc_attr($name . '[general][attribution_days]') . '" value="' . esc_attr((string) ($s['general']['attribution_days'] ?? 30)) . '"></label></section>';
+		echo '</div></div><div id="lfg-settings-panel-forms" class="lfg-settings-panel" role="tabpanel" data-lfg-settings-panel="forms" hidden><div class="lfg-settings-grid">' . $this->phone_settings($s, $name) . '</div></div>';
 		$antispam = is_array($s['antispam'] ?? null) ? $s['antispam'] : [];
+		echo '<div id="lfg-settings-panel-security" class="lfg-settings-panel" role="tabpanel" data-lfg-settings-panel="security" hidden><div class="lfg-settings-grid">';
 		echo '<section class="lfg-card lfg-settings"><h2>' . esc_html__('Антиспам і CAPTCHA', 'leadforms-go') . '</h2><label><span>' . esc_html__('CAPTCHA-провайдер', 'leadforms-go') . '</span><select name="' . esc_attr($name . '[antispam][provider]') . '"><option value="none">' . esc_html__('Вимкнено', 'leadforms-go') . '</option><option value="turnstile" ' . selected($antispam['provider'] ?? 'none', 'turnstile', false) . '>Cloudflare Turnstile</option></select></label><label><span>Turnstile Site Key</span><input class="regular-text" type="text" name="' . esc_attr($name . '[antispam][turnstile_site_key]') . '" value="' . esc_attr((string) ($antispam['turnstile_site_key'] ?? '')) . '"></label><label><span>Turnstile Secret Key</span><input class="regular-text" type="password" name="' . esc_attr($name . '[antispam][turnstile_secret_key]') . '" value="" placeholder="' . esc_attr(! empty($antispam['turnstile_secret_key']) ? __('Збережено — залиште порожнім, щоб не змінювати', 'leadforms-go') : '') . '"><small>' . esc_html__('Токен перевіряється лише на сервері з hostname та action validation.', 'leadforms-go') . '</small></label></section>';
+		echo '</div></div><div id="lfg-settings-panel-integrations" class="lfg-settings-panel" role="tabpanel" data-lfg-settings-panel="integrations" hidden><div class="lfg-settings-grid">';
 		$sections = [
 			'telegram' => ['title' => 'Telegram', 'fields' => ['token' => 'Токен бота', 'chat_id' => 'ID чату']],
 			'sheets' => ['title' => 'Google Sheets', 'fields' => ['spreadsheet_id' => 'Посилання або ID таблиці', 'sheet_name' => 'Назва аркуша', 'fields_order' => 'Порядок полів']],
@@ -289,7 +297,31 @@ final class Admin
 			echo '</section>';
 			if ($section === 'sheets') $this->google_setup();
 		}
-		echo '</div>' . $this->connection_profiles(); submit_button(__('Зберегти налаштування', 'leadforms-go')); echo '</form>'; $this->close();
+		echo '</div></div><div id="lfg-settings-panel-profiles" class="lfg-settings-panel" role="tabpanel" data-lfg-settings-panel="profiles" hidden>' . $this->connection_profiles() . '</div>';
+		echo '<div class="lfg-settings-actions">'; submit_button(__('Зберегти налаштування', 'leadforms-go'), 'primary', 'submit', false); echo '</div></form>'; $this->close();
+	}
+
+	private function phone_settings(array $settings, string $name): string
+	{
+		$general = is_array($settings['general'] ?? null) ? $settings['general'] : [];
+		$phone = Settings::phone_configuration();
+		$selected = array_map('strtoupper', (array) ($general['phone_countries'] ?? ['UA']));
+		$default = strtoupper((string) ($general['phone_default_country'] ?? 'UA'));
+		$html = '<section class="lfg-card lfg-settings lfg-phone-settings"><input type="hidden" name="' . esc_attr($name . '[general][phone_country_selector_configured]') . '" value="1"><header><div><h2>' . esc_html__('Міжнародні номери', 'leadforms-go') . '</h2><p>' . esc_html__('Додайте до телефонного поля вибір країни. Код, маска й перевірка номера змінюватимуться автоматично.', 'leadforms-go') . '</p></div><label class="lfg-switch"><input type="checkbox" name="' . esc_attr($name . '[general][phone_country_selector]') . '" value="1" ' . checked($phone['enabled'], true, false) . '><span>' . esc_html__('Показувати вибір країни', 'leadforms-go') . '</span></label></header>';
+		$html .= '<label><span>' . esc_html__('Країна за замовчуванням', 'leadforms-go') . '</span><select name="' . esc_attr($name . '[general][phone_default_country]') . '">';
+		foreach (Settings::phone_countries() as $code => $country) {
+			$html .= '<option value="' . esc_attr($code) . '" ' . selected($default, $code, false) . '>' . esc_html($country['name'] . ' (+' . $country['dial'] . ')') . '</option>';
+		}
+		$display = (string) ($phone['display'] ?? 'code');
+		$html .= '</select></label><label><span>' . esc_html__('Вигляд вибору країни', 'leadforms-go') . '</span><select name="' . esc_attr($name . '[general][phone_country_display]') . '">';
+		foreach (['name_code' => __('Назва країни + код', 'leadforms-go'), 'code' => __('Лише код', 'leadforms-go'), 'flag_code' => __('Прапорець + код', 'leadforms-go'), 'flag' => __('Лише прапорець', 'leadforms-go')] as $value => $label) {
+			$html .= '<option value="' . esc_attr($value) . '" ' . selected($display, $value, false) . '>' . esc_html($label) . '</option>';
+		}
+		$html .= '</select></label><fieldset class="lfg-country-options"><legend>' . esc_html__('Доступні країни у формах', 'leadforms-go') . '</legend><p>' . esc_html__('Позначте країни, які відвідувач зможе вибрати біля номера телефону.', 'leadforms-go') . '</p><div>';
+		foreach (Settings::phone_countries() as $code => $country) {
+			$html .= '<label><input type="checkbox" name="' . esc_attr($name . '[general][phone_countries][]') . '" value="' . esc_attr($code) . '" ' . checked(in_array($code, $selected, true), true, false) . '><span>' . esc_html($country['name']) . '</span><small>+' . esc_html($country['dial']) . '</small></label>';
+		}
+		return $html . '</div></fieldset><p class="lfg-settings-note">' . esc_html__('Якщо вибір країни вимкнено, застосовується лише країна за замовчуванням.', 'leadforms-go') . '</p></section>';
 	}
 
 	private function connection_profiles(): string

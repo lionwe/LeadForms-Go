@@ -9,6 +9,42 @@ class LeadFormsGoAdmin {
 		document.addEventListener('click', (event) => this.handleClick(event));
 		document.addEventListener('change', (event) => this.handleChange(event));
 		this.initBuilder();
+		this.initSettingsTabs();
+	}
+
+	initSettingsTabs() {
+		const form = document.querySelector('[data-lfg-settings-form]');
+		if (!form) return;
+		const tabs = [...form.querySelectorAll('[data-lfg-settings-tab]')];
+		const panels = [...form.querySelectorAll('[data-lfg-settings-panel]')];
+		const activate = (name, focus = false) => {
+			if (!tabs.some((tab) => tab.dataset.lfgSettingsTab === name)) name = 'general';
+			tabs.forEach((tab) => {
+				const active = tab.dataset.lfgSettingsTab === name;
+				tab.classList.toggle('is-active', active);
+				tab.setAttribute('aria-selected', active ? 'true' : 'false');
+				tab.tabIndex = active ? 0 : -1;
+				if (active && focus) tab.focus();
+			});
+			panels.forEach((panel) => {
+				const active = panel.dataset.lfgSettingsPanel === name;
+				panel.hidden = !active;
+				panel.classList.toggle('is-active', active);
+			});
+			window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${name}`);
+		};
+		tabs.forEach((tab, index) => {
+			tab.addEventListener('click', () => activate(tab.dataset.lfgSettingsTab));
+			tab.addEventListener('keydown', (event) => {
+				if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+				event.preventDefault();
+				let next = event.key === 'Home' ? 0 : (event.key === 'End' ? tabs.length - 1 : index + (event.key === 'ArrowRight' ? 1 : -1));
+				if (next < 0) next = tabs.length - 1;
+				if (next >= tabs.length) next = 0;
+				activate(tabs[next].dataset.lfgSettingsTab, true);
+			});
+		});
+		activate(window.location.hash.replace('#', '') || 'general');
 	}
 
 	handleChange(event) {

@@ -13,7 +13,7 @@ final class Form_Builder
 		return [
 			'first_name' => ['type' => 'text', 'label' => __('Ім’я', 'leadforms-go'), 'name' => __('Ім’я', 'leadforms-go'), 'placeholder' => __('Ваше ім’я', 'leadforms-go'), 'required' => true],
 			'last_name' => ['type' => 'text', 'label' => __('Прізвище', 'leadforms-go'), 'name' => __('Прізвище', 'leadforms-go'), 'placeholder' => __('Ваше прізвище', 'leadforms-go'), 'required' => false],
-			'phone' => ['type' => 'tel', 'label' => __('Номер телефону', 'leadforms-go'), 'name' => __('Номер телефону', 'leadforms-go'), 'placeholder' => __('Номер телефону', 'leadforms-go'), 'required' => true, 'mask' => '+38 (000) 000-00-00'],
+			'phone' => ['type' => 'tel', 'label' => __('Номер телефону', 'leadforms-go'), 'name' => __('Номер телефону', 'leadforms-go'), 'placeholder' => __('Номер телефону', 'leadforms-go'), 'required' => true, 'mask' => '+380 (00) 000-00-00'],
 			'email' => ['type' => 'email', 'label' => __('Електронна пошта', 'leadforms-go'), 'name' => __('Електронна пошта', 'leadforms-go'), 'placeholder' => 'name@example.com', 'required' => true],
 			'company' => ['type' => 'text', 'label' => __('Компанія', 'leadforms-go'), 'name' => __('Компанія', 'leadforms-go'), 'placeholder' => __('Назва компанії', 'leadforms-go'), 'required' => false],
 			'city' => ['type' => 'text', 'label' => __('Місто', 'leadforms-go'), 'name' => __('Місто', 'leadforms-go'), 'placeholder' => __('Ваше місто', 'leadforms-go'), 'required' => false],

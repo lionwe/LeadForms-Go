@@ -92,30 +92,132 @@ class FormValidator {
 }
 
 class PhoneMask {
-	constructor(input) {
+	constructor(input, config = {}, locale = 'uk_UA') {
 		this.input = input;
-		this.pattern = input.dataset.leadformsGoMask || '';
-		this.prefixDigits = (this.pattern.split('0', 1)[0].match(/\d/g) || []).join('');
+		this.config = config && typeof config === 'object' ? config : {};
+		this.locale = String(locale || 'uk_UA').replace('_', '-');
+		this.countries = this.config.countries && typeof this.config.countries === 'object' ? this.config.countries : {};
+		this.country = this.countries[this.config.default] ? this.config.default : Object.keys(this.countries)[0];
+		this.pattern = this.country ? this.countries[this.country].mask : (input.dataset.leadformsGoMask || '');
+		this.prefixDigits = this.country ? String(this.countries[this.country].dial) : (this.pattern.split('0', 1)[0].match(/\d/g) || []).join('');
 		if (!this.pattern) return;
+		if (this.config.enabled && Object.keys(this.countries).length > 1) this.addCountrySelector();
 		input.addEventListener('input', () => this.apply());
+		input.addEventListener('blur', () => {
+			if (this.input.value.replace(/\D/g, '') === this.prefixDigits) this.input.value = '';
+		});
+		this.apply();
+	}
+
+	addCountrySelector() {
+		const wrapper = document.createElement('span');
+		const display = ['name_code', 'code', 'flag_code', 'flag'].includes(this.config.display) ? this.config.display : 'code';
+		wrapper.className = `leadforms-go-phone leadforms-go-phone--${display}`;
+		const select = document.createElement('select');
+		select.className = 'leadforms-go-phone__country';
+		const language = this.locale.split('-', 1)[0].toLowerCase();
+		select.lang = this.locale;
+		select.setAttribute('aria-label', this.config.countryLabels?.[language] || 'Country code');
+		const dialCodes = new Set();
+		Object.entries(this.countries).forEach(([code, country]) => {
+			const dial = String(country.dial);
+			if (display === 'code' && dialCodes.has(dial)) return;
+			dialCodes.add(dial);
+			const option = document.createElement('option');
+			option.value = code;
+			option.textContent = this.countryOption(display, code, country);
+			option.selected = display === 'code' ? dial === String(this.countries[this.country].dial) : code === this.country;
+			select.append(option);
+		});
+		this.input.before(wrapper);
+		wrapper.append(select, this.input);
+		this.select = select;
+		select.addEventListener('change', () => {
+			const national = this.nationalDigits();
+			this.country = select.value;
+			this.updateCountry();
+			this.input.value = national;
+			this.apply();
+			this.input.focus();
+		});
+	}
+
+	countryOption(display, code, country) {
+		const flag = String.fromCodePoint(...code.toUpperCase().split('').map((character) => 127397 + character.charCodeAt(0)));
+		if (display === 'name_code') return `${this.countryName(code, country.name)} (+${country.dial})`;
+		if (display === 'flag_code') return `${flag} +${country.dial}`;
+		if (display === 'flag') return flag;
+		return `+${country.dial}`;
+	}
+
+	countryName(code, fallback) {
+		try {
+			return new Intl.DisplayNames([this.locale], { type: 'region' }).of(code) || fallback;
+		} catch { return fallback; }
+	}
+
+	nationalDigits() {
+		let digits = this.input.value.replace(/\D/g, '');
+		if (this.prefixDigits && digits.startsWith(this.prefixDigits)) digits = digits.slice(this.prefixDigits.length);
+		return digits;
+	}
+
+	updateCountry() {
+		const country = this.countries[this.country];
+		if (!country) return;
+		this.pattern = country.mask;
+		this.prefixDigits = String(country.dial);
+		const prefix = `+${this.prefixDigits}`;
+		this.nationalPattern = this.pattern.startsWith(prefix) ? this.pattern.slice(prefix.length).trimStart() : this.pattern;
+		this.input.dataset.minLength = String(Number(country.min || 4) + (this.select ? 0 : this.prefixDigits.length));
+		this.input.dataset.maxPhoneLength = String(Number(country.max || 15) + (this.select ? 0 : this.prefixDigits.length));
+	}
+
+	fullValue() {
+		const value = this.input.value.trim();
+		return this.select && value ? `+${this.prefixDigits} ${value}` : value;
+	}
+
+	reset() {
+		if (this.select) this.country = this.select.value;
+		this.updateCountry();
 		this.apply();
 	}
 
 	apply() {
 		let digits = this.input.value.replace(/\D/g, '');
+		if (this.select && this.input.value.trim().startsWith('+')) {
+			const detected = Object.entries(this.countries)
+				.filter(([, country]) => digits.startsWith(String(country.dial)))
+				.sort(([, first], [, second]) => String(second.dial).length - String(first.dial).length)[0];
+			if (detected && detected[0] !== this.country) {
+				this.country = detected[0];
+				this.select.value = this.country;
+				this.updateCountry();
+			}
+		}
 		if (this.prefixDigits && digits.startsWith(this.prefixDigits)) digits = digits.slice(this.prefixDigits.length);
+		if (this.country) {
+			this.updateCountry();
+			digits = digits.slice(0, Number(this.countries[this.country].max || 15));
+		}
 		let index = 0;
-		let output = '';
-		for (let position = 0; position < this.pattern.length; position += 1) {
-			const character = this.pattern[position];
+		let output = this.country && digits.length && !this.select ? `+${this.prefixDigits}` : '';
+		const pattern = this.country ? this.nationalPattern : this.pattern;
+		for (let position = 0; position < pattern.length; position += 1) {
+			const character = pattern[position];
 			if (character === '{') {
-				const end = this.pattern.indexOf('}', position);
-				if (end !== -1) { output += this.pattern.slice(position + 1, end); position = end; continue; }
+				const end = pattern.indexOf('}', position);
+				if (end !== -1) {
+					if (index < digits.length) output += pattern.slice(position + 1, end);
+					position = end;
+					continue;
+				}
 			}
 			if (character === '0') {
 				if (index >= digits.length) break;
 				output += digits[index++];
-			} else if (index < digits.length || output) output += character;
+			} else if (index < digits.length) output += character;
 		}
 		this.input.value = output;
 	}
@@ -136,7 +238,7 @@ class LeadForm {
 		this.requestId = this.createRequestId();
 		this.addHoneypot();
 		this.validator = new FormValidator(this.form, this.config.messages);
-		this.form.querySelectorAll('input[data-leadforms-go-mask]').forEach((input) => new PhoneMask(input));
+		this.phoneMasks = [...this.form.querySelectorAll('input[type="tel"], input[data-leadforms-go-mask]')].map((input) => new PhoneMask(input, this.config.phone, this.root.dataset.leadformsGoLocale));
 		this.initConditions();
 		this.initTurnstile();
 		this.form.noValidate = true;
@@ -189,6 +291,7 @@ class LeadForm {
 			}
 			this.validator.clear();
 			this.form.reset();
+			this.phoneMasks.forEach((phone) => phone.reset());
 			this.updateConditions();
 			this.requestId = this.createRequestId();
 			console.info('[LeadForms Go] Submission accepted', {
@@ -225,6 +328,9 @@ class LeadForm {
 	requestBody() {
 		const payload = {};
 		new FormData(this.form).forEach((value, key) => { if (typeof value === 'string') payload[key] = value; });
+		this.phoneMasks.forEach((phone) => {
+			if (phone.input.name) payload[phone.input.name] = phone.fullValue();
+		});
 		const query = new URLSearchParams(window.location.search);
 		['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ttclid'].forEach((key) => {
 			const current = query.get(key);

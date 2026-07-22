@@ -101,6 +101,7 @@ final class Plugin
 	{
 		if ($this->frontend_configured) return;
 		$this->frontend_configured = true;
+		$phone = Settings::phone_configuration();
 		$config = wp_json_encode([
 			'ajaxUrl' => wp_make_link_relative(admin_url('admin-ajax.php')),
 			'successDuration' => 4000,
@@ -108,6 +109,13 @@ final class Plugin
 			'attributionTtl' => (int) (Settings::section('general')['attribution_days'] ?? 30) * DAY_IN_SECONDS,
 			'turnstileSiteKey' => Turnstile::enabled() ? Turnstile::site_key() : '',
 			'turnstileAction' => Turnstile::ACTION,
+			'phone' => [
+				'enabled' => $phone['enabled'],
+				'default' => $phone['default'],
+				'display' => $phone['display'],
+				'countries' => $phone['countries'],
+				'countryLabels' => ['uk' => 'Код країни', 'en' => 'Country code', 'pl' => 'Kod kraju', 'de' => 'Ländervorwahl'],
+			],
 			'messages' => [
 				'sending' => __('Відправка…', 'leadforms-go'),
 				'success' => __('Дякуємо! Форму успішно відправлено.', 'leadforms-go'),

@@ -202,7 +202,21 @@ final class Submission_Validator
 		if (preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}\x{200D}]/u', $value) === 1) return (string) ($messages['emoji'] ?? __('Смайлики використовувати не можна.', 'leadforms-go'));
 		if ($type === 'tel') {
 			$digits = (string) preg_replace('/\D+/', '', $value);
-			if (strlen($digits) < 12 || ! str_starts_with($digits, '380')) return sprintf((string) ($messages['phone'] ?? __('Введіть коректний номер телефону — мінімум %d цифр.', 'leadforms-go')), 12);
+			$phone = Settings::phone_configuration();
+			$countries = $phone['enabled'] ? $phone['countries'] : [$phone['default'] => $phone['countries'][$phone['default']]];
+			uasort($countries, static fn (array $first, array $second): int => strlen($second['dial']) <=> strlen($first['dial']));
+			$matched = null;
+			foreach ($countries as $country) {
+				if (str_starts_with($digits, $country['dial'])) {
+					$matched = $country;
+					break;
+				}
+			}
+			$minimum = $matched ? strlen($matched['dial']) + $matched['min'] : 7;
+			$maximum_phone = $matched ? strlen($matched['dial']) + $matched['max'] : 15;
+			if ($matched === null || strlen($digits) < $minimum || strlen($digits) > $maximum_phone) {
+				return sprintf((string) ($messages['phone'] ?? __('Введіть коректний номер телефону — мінімум %d цифр.', 'leadforms-go')), $minimum);
+			}
 		}
 		if ($type === 'email' && ! is_email($value)) return (string) ($messages['email'] ?? __('Введіть коректну електронну адресу.', 'leadforms-go'));
 		return '';

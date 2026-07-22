@@ -3,15 +3,19 @@
 declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
+require dirname(__DIR__) . '/includes/class-form-translations.php';
 require dirname(__DIR__) . '/includes/class-telegram-template.php';
 require dirname(__DIR__) . '/includes/class-route-config.php';
 require dirname(__DIR__) . '/includes/class-google-sheets-service.php';
 require dirname(__DIR__) . '/includes/class-submission-security.php';
+require dirname(__DIR__) . '/includes/class-submission-validator.php';
 
 use LeadFormsGo\Google_Sheets_Service;
 use LeadFormsGo\Route_Config;
 use LeadFormsGo\Telegram_Template;
 use LeadFormsGo\Submission_Security;
+use LeadFormsGo\Submission_Validator;
+use LeadFormsGo\Form_Translations;
 
 $failures = [];
 $assert = static function (bool $condition, string $message) use (&$failures): void {
@@ -42,6 +46,17 @@ $assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'phone'], ['
 $dispatch_token = Submission_Security::dispatch_token(42);
 $assert(Submission_Security::verify_dispatch_token(42, $dispatch_token), 'Dispatch token must verify for its submission.');
 $assert(! Submission_Security::verify_dispatch_token(43, $dispatch_token), 'Dispatch token must not verify for another submission.');
+$phone_form = ['editor_mode' => 'visual', 'form_schema' => json_encode([['key' => 'phone', 'type' => 'tel', 'required' => true]])];
+$valid_polish_phone = Submission_Validator::validate($phone_form, ['phone' => '+48 501 234 567']);
+$invalid_country_phone = Submission_Validator::validate($phone_form, ['phone' => '+49 151 23456789']);
+$assert($valid_polish_phone['errors'] === [], 'An allowed international phone number must pass validation.');
+$assert(isset($invalid_country_phone['errors']['phone']), 'A phone number from a disabled country must fail validation.');
+$locales = Form_Translations::available_locales();
+$assert(isset($locales['pl_PL'], $locales['de_DE']), 'Polish and German must be available in the form builder.');
+$assert(Form_Translations::default_fields('pl_PL')['phone']['label'] === 'Numer telefonu', 'Polish field defaults must be translated.');
+$assert(Form_Translations::default_fields('de_DE')['phone']['label'] === 'Telefonnummer', 'German field defaults must be translated.');
+$polish_defaults = Form_Translations::resolve([], 'pl_PL', 'uk_UA');
+$assert($polish_defaults['submit_label'] === 'Wyślij', 'Polish forms without stored translations must use Polish defaults.');
 $snapshot = Route_Config::snapshot($config, 'telegram', ['form_name' => 'Original', 'submitted_at' => '2026-07-13 10:00:00']);
 $snapshot_route = Route_Config::route_from_snapshot($snapshot, 'telegram');
 $assert($snapshot_route['_context']['form_name'] === 'Original', 'Route snapshot context must be immutable.');
