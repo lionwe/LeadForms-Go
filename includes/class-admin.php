@@ -105,7 +105,7 @@ final class Admin
 		$transfer = Database::site_transfer_notice();
 		if ($transfer !== []) {
 			$message = sprintf(
-				__('Виявлено перенесення сайту з %1$s на %2$s. Інтеграції вимкнено, активні доставки скасовано: %3$d. Перевірте налаштування перед новими заявками.', 'leadforms-go'),
+				__('Виявлено перенесення сайту з %1$s на %2$s. Інтеграції вимкнено, активні доставки скасовано: %3$d. Збережені токени та інші реквізити не видалено — перевірте їх і повторно увімкніть потрібні інтеграції в налаштуваннях.', 'leadforms-go'),
 				(string) ($transfer['previous'] ?? ''),
 				(string) ($transfer['current'] ?? ''),
 				(int) ($transfer['cancelled'] ?? 0)
@@ -277,12 +277,15 @@ final class Admin
 			$fields = $section_data['fields'];
 			foreach ($fields as $key => $label) {
 				$is_secret = $key === 'token'; $value = $is_secret ? '' : (string) ($s[$section][$key] ?? '');
-				$placeholder = $is_secret && ! empty($s[$section][$key]) ? __('Збережено — залиште порожнім, щоб не змінювати', 'leadforms-go') : (string) ($sheets_placeholders[$key] ?? '');
-				echo '<label><span>' . esc_html($label) . '</span><input class="regular-text" type="' . ($is_secret ? 'password' : 'text') . '" name="' . esc_attr($name . '[' . $section . '][' . $key . ']') . '" value="' . esc_attr($value) . '" placeholder="' . esc_attr($placeholder) . '">' . (isset($sheets_help[$key]) && $section === 'sheets' ? '<small>' . esc_html($sheets_help[$key]) . '</small>' : '') . '</label>';
+				$secret_stored = $is_secret && ! empty($s[$section][$key]);
+				$placeholder = $secret_stored ? __('Збережено — введіть новий токен лише для заміни', 'leadforms-go') : (string) ($sheets_placeholders[$key] ?? '');
+				$help = isset($sheets_help[$key]) && $section === 'sheets' ? '<small>' . esc_html($sheets_help[$key]) . '</small>' : '';
+				if ($secret_stored) $help .= '<small class="lfg-secret-status">' . esc_html__('Токен збережено. З міркувань безпеки його значення не показується.', 'leadforms-go') . '</small>';
+				echo '<label><span>' . esc_html($label) . '</span><input class="regular-text" type="' . ($is_secret ? 'password' : 'text') . '" name="' . esc_attr($name . '[' . $section . '][' . $key . ']') . '" value="' . esc_attr($value) . '" placeholder="' . esc_attr($placeholder) . '">' . $help . '</label>';
 			}
-			$test_label = $section === 'sheets' ? __('Зберегти й перевірити', 'leadforms-go') : __('Перевірити підключення', 'leadforms-go');
+			$test_label = in_array($section, ['telegram', 'sheets'], true) ? __('Зберегти й перевірити', 'leadforms-go') : __('Перевірити підключення', 'leadforms-go');
 			echo '<button type="button" class="button" data-lfg-test="' . esc_attr($section) . '">' . esc_html($test_label) . '</button><span class="lfg-test-result" aria-live="polite"></span>';
-			if ($section === 'telegram') echo '<small class="lfg-test-help">' . esc_html__('Перевірка використовує поточні введені значення й не зберігає їх.', 'leadforms-go') . '</small>';
+			if ($section === 'telegram') echo '<small class="lfg-test-help">' . esc_html__('Поточні значення та стан перемикача буде збережено перед перевіркою.', 'leadforms-go') . '</small>';
 			echo '</section>';
 			if ($section === 'sheets') $this->google_setup();
 		}
@@ -471,6 +474,13 @@ final class Admin
 	{
 		$this->guard('leadforms_go_admin', 'nonce');
 		$key = sanitize_key(self::scalar_string($_POST['connector'] ?? ''));
+		if ($key === 'telegram') {
+			Settings::update_section('telegram', [
+				'enabled' => self::scalar_string($_POST['enabled'] ?? ''),
+				'token' => self::scalar_string($_POST['token'] ?? ''),
+				'chat_id' => self::scalar_string($_POST['chat_id'] ?? ''),
+			]);
+		}
 		if ($key === 'sheets') {
 			Settings::update_section('sheets', [
 				'enabled' => self::scalar_string($_POST['enabled'] ?? ''),

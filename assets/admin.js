@@ -577,8 +577,10 @@ class LeadFormsGoAdmin {
 				const section = button.closest('.lfg-settings');
 				['token', 'chat_id'].forEach((key) => {
 					const input = section?.querySelector(`[name="leadforms_go_settings[telegram][${key}]"]`);
-					if (input?.value) body.append(key, input.value);
+					if (input) body.append(key, input.value);
 				});
+				const enabled = section?.querySelector('[name="leadforms_go_settings[telegram][enabled]"]');
+				body.append('enabled', enabled?.checked ? '1' : '');
 			}
 			const response = await fetch(this.config.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body, signal: controller.signal });
 			const result = await response.json();
