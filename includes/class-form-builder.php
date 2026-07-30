@@ -80,11 +80,11 @@ final class Form_Builder
 	public static function sanitize_button_icon(mixed $icon): array
 	{
 		if (! is_array($icon)) {
-			return ['type' => 'none', 'position' => 'after', 'fa_class' => '', 'svg' => ''];
+			return ['type' => 'none', 'position' => 'after', 'fa_class' => '', 'svg' => '', 'attachment_id' => 0];
 		}
 
 		$type = sanitize_key((string) ($icon['type'] ?? 'none'));
-		if (! in_array($type, ['none', 'svg', 'fontawesome'], true)) {
+		if (! in_array($type, ['none', 'svg', 'media_svg', 'fontawesome'], true)) {
 			$type = 'none';
 		}
 
@@ -95,6 +95,7 @@ final class Form_Builder
 
 		$fa_class = self::sanitize_fontawesome_class((string) ($icon['fa_class'] ?? ''));
 		$svg = self::sanitize_svg((string) ($icon['svg'] ?? ''));
+		$attachment_id = self::sanitize_svg_attachment_id($icon['attachment_id'] ?? 0);
 
 		if ($type === 'fontawesome' && $fa_class === '') {
 			$type = 'none';
@@ -104,11 +105,16 @@ final class Form_Builder
 			$type = 'none';
 		}
 
+		if ($type === 'media_svg' && $attachment_id === 0) {
+			$type = 'none';
+		}
+
 		return [
 			'type' => $type,
 			'position' => $position,
 			'fa_class' => $type === 'fontawesome' ? $fa_class : '',
 			'svg' => $type === 'svg' ? $svg : '',
+			'attachment_id' => $type === 'media_svg' ? $attachment_id : 0,
 		];
 	}
 
@@ -216,7 +222,24 @@ final class Form_Builder
 			return '<span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--svg" aria-hidden="true">' . $button_icon['svg'] . '</span>';
 		}
 
+		if ($button_icon['type'] === 'media_svg' && $button_icon['attachment_id'] > 0) {
+			$url = wp_get_attachment_url($button_icon['attachment_id']);
+			if (is_string($url) && $url !== '') {
+				return '<span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--media-svg" aria-hidden="true"><img src="' . esc_url($url) . '" alt="" decoding="async"></span>';
+			}
+		}
+
 		return '';
+	}
+
+	private static function sanitize_svg_attachment_id(mixed $attachment_id): int
+	{
+		$attachment_id = absint($attachment_id);
+		if ($attachment_id === 0 || get_post_mime_type($attachment_id) !== 'image/svg+xml') return 0;
+		$url = wp_get_attachment_url($attachment_id);
+		if (! is_string($url) || $url === '') return 0;
+		$path = (string) wp_parse_url($url, PHP_URL_PATH);
+		return strtolower((string) pathinfo($path, PATHINFO_EXTENSION)) === 'svg' ? $attachment_id : 0;
 	}
 
 	private static function sanitize_fontawesome_class(string $class): string

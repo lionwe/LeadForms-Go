@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.7.0';
+	private const SCHEMA_VERSION = '1.8.0';
 	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
 	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
 
@@ -96,6 +96,13 @@ final class Database
 			ttclid varchar(255) NOT NULL DEFAULT '',
 			visited_at datetime DEFAULT NULL,
 			status varchar(20) NOT NULL DEFAULT 'pending',
+			lead_state varchar(20) NOT NULL DEFAULT 'new',
+			phone_fingerprint char(64) NOT NULL DEFAULT '',
+			email_fingerprint char(64) NOT NULL DEFAULT '',
+			duplicate_of bigint(20) unsigned DEFAULT NULL,
+			dedup_indexed tinyint(1) unsigned NOT NULL DEFAULT 0,
+			acknowledged_at datetime DEFAULT NULL,
+			spam_at datetime DEFAULT NULL,
 			created_at datetime NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY legacy_id (legacy_id),
@@ -103,6 +110,11 @@ final class Database
 			KEY locale (locale),
 			UNIQUE KEY request_id (request_id),
 			KEY status_created (status,created_at),
+			KEY lead_state_created (lead_state,created_at),
+			KEY phone_fingerprint (phone_fingerprint),
+			KEY email_fingerprint (email_fingerprint),
+			KEY duplicate_of (duplicate_of),
+			KEY dedup_indexed (dedup_indexed),
 			KEY created_at (created_at)
 		) $collate;");
 		dbDelta("CREATE TABLE {$tables['deliveries']} (
@@ -119,6 +131,8 @@ final class Database
 			idempotency_key varchar(64) NOT NULL DEFAULT '',
 			route_snapshot longtext NOT NULL,
 			external_reference varchar(255) NOT NULL DEFAULT '',
+			external_meta longtext NOT NULL,
+			telegram_reminder_sent_at datetime DEFAULT NULL,
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
 			PRIMARY KEY  (id),
@@ -158,6 +172,8 @@ final class Database
 		self::migrate_form_translations();
 		self::grant_capabilities();
 		update_option('leadforms_go_schema_version', self::SCHEMA_VERSION, false);
+		delete_option('leadforms_go_dedup_backfill_complete');
+		Lead_Deduplicator::schedule_backfill();
 		$queued = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$tables['deliveries']} WHERE status = 'queued'"); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		if ($queued > 0) update_option('leadforms_go_queue_pending', 1, false);
 		else delete_option('leadforms_go_queue_pending');

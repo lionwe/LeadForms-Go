@@ -89,6 +89,17 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		$topic_id = absint(($route['topic_id'] ?? 0) ?: ($settings['topic_id'] ?? 0));
 		if ($topic_id > 0) $body['message_thread_id'] = $topic_id;
 		$buttons = Telegram_Template::render_buttons($this->localized_buttons((array) ($route['buttons'] ?? []), $locale), $variables);
+		$interactive = ! empty($route['interactive']);
+		$interaction_warning = '';
+		if ($interactive) {
+			$webhook = Telegram_Interactions::ensure_webhook($settings['token']);
+			if (is_wp_error($webhook)) {
+				$interactive = false;
+				$interaction_warning = $webhook->get_error_message();
+			} else {
+				$buttons = array_merge($buttons, Telegram_Interactions::action_buttons($request->delivery_id, $settings['token']));
+			}
+		}
 		if ($buttons !== []) $body['reply_markup'] = wp_json_encode(['inline_keyboard' => $buttons]);
 		$response = wp_remote_post($this->endpoint($settings['token'], 'sendMessage'), $this->request_args(['body' => $body]));
 		$response_body = is_wp_error($response) ? [] : json_decode(wp_remote_retrieve_body($response), true);
@@ -98,7 +109,16 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		$reference = $message_id > 0 ? 'message:' . $message_id : '';
 		if ($message_id > 0 && $username !== '') $reference = 'https://t.me/' . rawurlencode($username) . '/' . $message_id;
 		elseif ($message_id > 0 && str_starts_with($chat_id, '-100')) $reference = 'https://t.me/c/' . rawurlencode(substr($chat_id, 4)) . '/' . $message_id;
-		return $this->result($response, $reference);
+		$result = $this->result($response, $reference);
+		if (! $result->success) return $result;
+		return new Result(true, $result->http_code, $interaction_warning, false, $reference, [
+			'interactive' => $interactive,
+			'bot_key' => Telegram_Interactions::bot_key($settings['token']),
+			'chat_id' => $chat_id !== '' ? $chat_id : $settings['chat_id'],
+			'message_id' => $message_id,
+			'topic_id' => $topic_id,
+			'custom_keyboard' => Telegram_Template::render_buttons($this->localized_buttons((array) ($route['buttons'] ?? []), $locale), $variables),
+		]);
 	}
 
 	private function resolved_settings(array $route): array

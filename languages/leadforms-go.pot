@@ -14,6 +14,78 @@ msgstr ""
 "X-Poedit-SourceCharset: UTF-8\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Усі заявки"
+msgstr ""
+
+msgid "Унікальні контакти"
+msgstr ""
+
+msgid "Повторні звернення"
+msgstr ""
+
+msgid "Спам"
+msgstr ""
+
+msgid "Конверсія без спаму"
+msgstr ""
+
+msgid "Динаміка заявок"
+msgstr ""
+
+msgid "Нові"
+msgstr ""
+
+msgid "Повторні"
+msgstr ""
+
+msgid "UTM-кампанії"
+msgstr ""
+
+msgid "Стан ліда"
+msgstr ""
+
+msgid "У роботі"
+msgstr ""
+
+msgid "Повторне звернення"
+msgstr ""
+
+msgid "Попередня заявка"
+msgstr ""
+
+msgid "Статус доставки"
+msgstr ""
+
+msgid "Взяти в роботу"
+msgstr ""
+
+msgid "Підтвердити спам"
+msgstr ""
+
+msgid "Скасувати"
+msgstr ""
+
+msgid "Нагадування: заявку #%d ще не взято в роботу."
+msgstr ""
+
+msgid "Заявку взято в роботу."
+msgstr ""
+
+msgid "Заявку позначено як спам."
+msgstr ""
+
+msgid "Інтерактивний Telegram-режим потребує публічного HTTPS URL. Звичайна доставка продовжить працювати."
+msgstr ""
+
+msgid "Кнопки «В роботу» / «Спам» і нагадування через 30 хв"
+msgstr ""
+
+msgid "Власний діапазон"
+msgstr ""
+
+msgid "LeadForms Go фоново індексує старі заявки для визначення повторних звернень. Нові заявки вже обробляються одразу."
+msgstr ""
+
 #: includes/class-admin.php:26, includes/class-admin.php:26, includes/class-admin.php:135
 msgid "Форми"
 msgstr ""
@@ -930,4 +1002,216 @@ msgstr ""
 
 #: includes/class-submission-validator.php:99
 msgid "Введіть коректну електронну адресу."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Робочий огляд"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Спочатку опрацюйте нові заявки, потім перевірте результат за період."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Потребує дії"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Все під контролем"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "%d пунктів потребують уваги"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Нових заявок і проблем із доставкою зараз немає."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Почніть із нових заявок; технічні помилки перевірте після них."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "нових заявок"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "помилок доставки сьогодні"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "прострочених доставок"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Результат"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Аналітика заявок"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Період аналітики"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Фільтри"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Заявки"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "усі звернення за період"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Конверсія"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "без урахування спаму"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "переглядів форм"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "спам-заявок"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "доставок у черзі"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Нові та повторні"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Найкращі форми"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Детальні зрізи за формами та рекламою"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Технічний стан"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Інтеграції, черга та cron"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Працює нормально"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Потребує перевірки"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Відкрити попередню заявку #%d"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Повторне · #%d"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Інтерактивні дії"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "HTTPS доступний"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Потрібен публічний HTTPS"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Увімкніть інтерактивний режим у Telegram-маршруті потрібної форми. Нові повідомлення отримають кнопки «Взяти в роботу» та «Спам»."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "На локальному HTTP-сайті Telegram не зможе передати натискання кнопок назад у WordPress. Звичайні повідомлення продовжують надсилатися."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Налаштувати у формах"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Після натискання «Спам» бот окремо попросить підтвердження."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Замінити сторонній webhook"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Увімкніть лише якщо цей бот більше не використовується іншим сервісом."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Перевірка зберігає поточні значення й надсилає окреме тестове повідомлення без кнопок заявки."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Позначити всі нові заявки як прочитані?"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Позначено прочитаними: %d."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Позначити всі прочитаними"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Не вдалося оновити заявки."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Виберіть SVG з медіабібліотеки"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Використати SVG"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Можна вибрати лише файл SVG."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "SVG не вибрано"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "SVG з медіабібліотеки"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "SVG-файл"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Вибрати SVG"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Прибрати"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Можна вибрати лише SVG-вкладення з медіабібліотеки. Інші формати будуть відхилені."
 msgstr ""

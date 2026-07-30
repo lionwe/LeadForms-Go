@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace {
 	define('MINUTE_IN_SECONDS', 60);
+	define('HOUR_IN_SECONDS', 3600);
 	define('DAY_IN_SECONDS', 86400);
 	class WP_Error
 	{
@@ -19,6 +20,8 @@ namespace {
 	function sanitize_key(string $value): string { return strtolower((string) preg_replace('/[^a-zA-Z0-9_\-]/', '', $value)); }
 	function sanitize_text_field(string $value): string { return trim(strip_tags($value)); }
 	function sanitize_textarea_field(string $value): string { return trim(strip_tags($value)); }
+	function sanitize_email(string $value): string { return filter_var($value, FILTER_SANITIZE_EMAIL); }
+	function is_email(string $value): bool { return filter_var($value, FILTER_VALIDATE_EMAIL) !== false; }
 	function absint(mixed $value): int { return abs((int) $value); }
 	function esc_html(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 	function esc_url_raw(string $value, array $protocols = []): string

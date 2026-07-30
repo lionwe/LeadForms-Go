@@ -14,11 +14,13 @@ final class Admin
 		add_action('admin_init', [Connection_Profiles::class, 'register']);
 		add_action('admin_enqueue_scripts', [$this, 'assets']);
 		add_action('admin_notices', [$this, 'legacy_notice']);
+		add_action('admin_notices', [$this, 'dedup_notice']);
 		add_action('admin_post_leadforms_go_save_form', [$this, 'save_form']);
 		add_action('admin_post_leadforms_go_delete_form', [$this, 'delete_form']);
 		add_action('admin_post_leadforms_go_retry_delivery', [$this, 'retry_delivery']);
 		add_action('admin_post_leadforms_go_retry_submission', [$this, 'retry_submission']);
 		add_action('admin_post_leadforms_go_bulk_retry', [$this, 'bulk_retry']);
+		add_action('admin_post_leadforms_go_acknowledge_all', [$this, 'acknowledge_all']);
 		add_action('wp_ajax_leadforms_go_test_connector', [$this, 'test_connector']);
 		add_action('wp_ajax_leadforms_go_upload_google_credentials', [$this, 'upload_google_credentials']);
 		add_action('wp_ajax_leadforms_go_remove_google_credentials', [$this, 'remove_google_credentials']);
@@ -35,6 +37,7 @@ final class Admin
 	public function assets(string $hook): void
 	{
 		if (! str_contains($hook, 'leadforms-go')) return;
+		if (str_contains($hook, 'leadforms-go-forms')) wp_enqueue_media();
 		$style_version = @filemtime(LEADFORMS_GO_DIR . 'assets/admin.css') ?: LEADFORMS_GO_VERSION;
 		$script_version = @filemtime(LEADFORMS_GO_DIR . 'assets/admin.js') ?: LEADFORMS_GO_VERSION;
 		wp_enqueue_style('leadforms-go-admin', LEADFORMS_GO_URL . 'assets/admin.css', [], (string) $style_version);
@@ -52,6 +55,7 @@ final class Admin
 			'nonce' => wp_create_nonce('leadforms_go_admin'),
 			'testing' => __('Перевірка…', 'leadforms-go'),
 			'confirmDelete' => __('Видалити цю форму?', 'leadforms-go'),
+			'confirmAcknowledgeAll' => __('Позначити всі нові заявки як прочитані?', 'leadforms-go'),
 			'requestFailed' => __('Не вдалося виконати запит.', 'leadforms-go'),
 			'copied' => __('Скопійовано', 'leadforms-go'),
 			'copyFailed' => __('Не вдалося скопіювати', 'leadforms-go'),
@@ -82,6 +86,10 @@ final class Admin
 				'conditionOperators' => ['equals' => __('Дорівнює', 'leadforms-go'), 'not_equals' => __('Не дорівнює', 'leadforms-go'), 'contains' => __('Містить', 'leadforms-go'), 'filled' => __('Заповнено', 'leadforms-go')],
 				'copyLanguageConfirm' => __('Замінити тексти цієї мови текстами з основної мови?', 'leadforms-go'),
 				'iconSvgInvalid' => __('Вставте коректний SVG-код.', 'leadforms-go'),
+				'selectSvg' => __('Виберіть SVG з медіабібліотеки', 'leadforms-go'),
+				'useSvg' => __('Використати SVG', 'leadforms-go'),
+				'invalidSvgFile' => __('Можна вибрати лише файл SVG.', 'leadforms-go'),
+				'svgNotSelected' => __('SVG не вибрано', 'leadforms-go'),
 				'faCatalog' => self::fontawesome_catalog(),
 				'messageLabels' => [
 					'sending' => __('Відправлення', 'leadforms-go'),
@@ -102,6 +110,10 @@ final class Admin
 	{
 		$this->require_capability('manage_options');
 		$this->open(__('Огляд', 'leadforms-go'));
+		if (isset($_GET['acknowledged']) && is_scalar($_GET['acknowledged'])) {
+			$acknowledged = absint($_GET['acknowledged']);
+			echo '<div class="notice notice-success is-dismissible inline"><p>' . sprintf(esc_html__('Позначено прочитаними: %d.', 'leadforms-go'), $acknowledged) . '</p></div>';
+		}
 		$transfer = Database::site_transfer_notice();
 		if ($transfer !== []) {
 			$message = sprintf(
@@ -112,9 +124,25 @@ final class Admin
 			);
 			echo '<div class="notice notice-warning inline"><p><strong>' . esc_html__('Захист після перенесення сайту.', 'leadforms-go') . '</strong> ' . esc_html($message) . '</p></div>';
 		}
-		$stats = Repositories::dashboard_stats();
+		$period = isset($_GET['period']) && is_scalar($_GET['period']) ? sanitize_key(wp_unslash((string) $_GET['period'])) : '7';
+		$analytics_filters = [
+			'period' => in_array($period, ['7', '30', 'custom'], true) ? $period : '7',
+			'date_from' => isset($_GET['date_from']) && is_scalar($_GET['date_from']) ? sanitize_text_field(wp_unslash((string) $_GET['date_from'])) : '',
+			'date_to' => isset($_GET['date_to']) && is_scalar($_GET['date_to']) ? sanitize_text_field(wp_unslash((string) $_GET['date_to'])) : '',
+			'form_id' => isset($_GET['form_id']) ? absint($_GET['form_id']) : 0,
+			'utm_source' => isset($_GET['utm_source']) && is_scalar($_GET['utm_source']) ? sanitize_text_field(wp_unslash((string) $_GET['utm_source'])) : '',
+			'utm_campaign' => isset($_GET['utm_campaign']) && is_scalar($_GET['utm_campaign']) ? sanitize_text_field(wp_unslash((string) $_GET['utm_campaign'])) : '',
+		];
+		$stats = Repositories::dashboard_stats($analytics_filters);
 		$queue = (new Delivery_Queue())->health();
-		echo '<div class="lfg-dashboard-header"><div><h2>' . esc_html__('LeadForms Go', 'leadforms-go') . '</h2><p>' . esc_html__('Короткий огляд форм, заявок та інтеграцій.', 'leadforms-go') . '</p></div><div class="lfg-dashboard-actions"><a class="button lfg-dashboard-button lfg-dashboard-button--secondary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Налаштування', 'leadforms-go') . '</a><a class="button button-primary lfg-dashboard-button lfg-dashboard-button--primary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-forms&new=1')) . '"><span class="lfg-button-icon" aria-hidden="true"></span>' . esc_html__('Додати форму', 'leadforms-go') . '</a></div></div>';
+		$new_leads = Repositories::submission_count(['exclude_test' => true, 'lead_state' => 'new']);
+		$active_filter_count = count(array_filter([
+			$analytics_filters['period'] === 'custom',
+			$analytics_filters['form_id'] > 0,
+			$analytics_filters['utm_source'] !== '',
+			$analytics_filters['utm_campaign'] !== '',
+		]));
+		echo '<div class="lfg-dashboard-header"><div><h2>' . esc_html__('Робочий огляд', 'leadforms-go') . '</h2><p>' . esc_html__('Спочатку опрацюйте нові заявки, потім перевірте результат за період.', 'leadforms-go') . '</p></div><div class="lfg-dashboard-actions"><a class="button lfg-dashboard-button lfg-dashboard-button--secondary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Налаштування', 'leadforms-go') . '</a><a class="button button-primary lfg-dashboard-button lfg-dashboard-button--primary" href="' . esc_url(admin_url('admin.php?page=leadforms-go-forms&new=1')) . '"><span class="lfg-button-icon" aria-hidden="true"></span>' . esc_html__('Додати форму', 'leadforms-go') . '</a></div></div>';
 		if (! $queue['healthy']) {
 			if ($queue['cron_disabled']) $queue_warning = __('WP-Cron вимкнений. Серверний fallback обробить прострочені доставки під час наступних запитів, але для стабільної роботи налаштуйте системний cron.', 'leadforms-go');
 			elseif ($queue['cron_overdue']) $queue_warning = __('Cron-подія прострочена. Серверний fallback обробить чергу під час наступного WordPress-запиту.', 'leadforms-go');
@@ -122,23 +150,53 @@ final class Admin
 			else $queue_warning = __('Є прострочені доставки, але обробник WP-Cron не запланований.', 'leadforms-go');
 			echo '<div class="notice notice-warning inline lfg-queue-warning"><p><strong>' . esc_html__('Черга доставки потребує уваги.', 'leadforms-go') . '</strong> ' . esc_html($queue_warning) . '</p></div>';
 		}
+		$attention_total = $new_leads + (int) $stats['failed_today'] + (int) $queue['due'];
+		echo '<section class="lfg-attention-card' . ($attention_total === 0 ? ' is-clear' : '') . '"><div class="lfg-attention-card__intro"><span class="dashicons dashicons-' . ($attention_total === 0 ? 'yes-alt' : 'flag') . '" aria-hidden="true"></span><div><span>' . esc_html__('Потребує дії', 'leadforms-go') . '</span><h2>' . ($attention_total === 0 ? esc_html__('Все під контролем', 'leadforms-go') : sprintf(esc_html__('%d пунктів потребують уваги', 'leadforms-go'), $attention_total)) . '</h2><p>' . ($attention_total === 0 ? esc_html__('Нових заявок і проблем із доставкою зараз немає.', 'leadforms-go') : esc_html__('Почніть із нових заявок; технічні помилки перевірте після них.', 'leadforms-go')) . '</p></div></div>';
+		if ($attention_total > 0) {
+			echo '<div class="lfg-attention-list">';
+			if ($new_leads > 0) {
+				echo '<div class="lfg-attention-item"><a href="' . esc_url(admin_url('admin.php?page=leadforms-go-history&lead_state=new')) . '"><span><strong>' . (int) $new_leads . '</strong>' . esc_html__('нових заявок', 'leadforms-go') . '</span><span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span></a><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="leadforms_go_acknowledge_all">' . wp_nonce_field('leadforms_go_acknowledge_all', '_wpnonce', true, false) . '<button class="button" type="submit" data-lfg-acknowledge-all>' . esc_html__('Позначити всі прочитаними', 'leadforms-go') . '</button></form></div>';
+			}
+			if ((int) $stats['failed_today'] > 0) printf('<a class="is-error" href="%s"><span><strong>%d</strong>%s</span><span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span></a>', esc_url(admin_url('admin.php?page=leadforms-go-history&status=failed&date_from=' . wp_date('Y-m-d'))), (int) $stats['failed_today'], esc_html__('помилок доставки сьогодні', 'leadforms-go'));
+			if ((int) $queue['due'] > 0) printf('<a class="is-warning" href="%s"><span><strong>%d</strong>%s</span><span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span></a>', esc_url(admin_url('admin.php?page=leadforms-go-history&status=queued')), (int) $queue['due'], esc_html__('прострочених доставок', 'leadforms-go'));
+			echo '</div>';
+		}
+		echo '</section>';
+		echo '<section class="lfg-dashboard-section lfg-analytics-overview"><div class="lfg-analytics-toolbar"><div><span class="lfg-section-kicker">' . esc_html__('Результат', 'leadforms-go') . '</span><h2>' . esc_html__('Аналітика заявок', 'leadforms-go') . '</h2><p>' . esc_html($stats['date_from'] . ' — ' . $stats['date_to']) . '</p></div><div class="lfg-analytics-controls"><nav class="lfg-period-switcher" aria-label="' . esc_attr__('Період аналітики', 'leadforms-go') . '"><a class="' . ($analytics_filters['period'] === '7' ? 'is-active' : '') . '" href="' . esc_url(admin_url('admin.php?page=leadforms-go&period=7')) . '">' . esc_html__('7 днів', 'leadforms-go') . '</a><a class="' . ($analytics_filters['period'] === '30' ? 'is-active' : '') . '" href="' . esc_url(admin_url('admin.php?page=leadforms-go&period=30')) . '">' . esc_html__('30 днів', 'leadforms-go') . '</a></nav></div></div>';
+		echo '<details class="lfg-analytics-filter-panel"' . ($active_filter_count > 0 ? ' open' : '') . '><summary><span class="dashicons dashicons-filter" aria-hidden="true"></span>' . esc_html__('Фільтри', 'leadforms-go') . ($active_filter_count > 0 ? '<span class="lfg-filter-count">' . (int) $active_filter_count . '</span>' : '') . '</summary><form class="lfg-analytics-filters" method="get"><input type="hidden" name="page" value="leadforms-go"><label><span>' . esc_html__('Період', 'leadforms-go') . '</span><select name="period"><option value="7"' . selected($analytics_filters['period'], '7', false) . '>' . esc_html__('7 днів', 'leadforms-go') . '</option><option value="30"' . selected($analytics_filters['period'], '30', false) . '>' . esc_html__('30 днів', 'leadforms-go') . '</option><option value="custom"' . selected($analytics_filters['period'], 'custom', false) . '>' . esc_html__('Власний діапазон', 'leadforms-go') . '</option></select></label>';
+		echo '<label><span>' . esc_html__('Від', 'leadforms-go') . '</span><input type="date" name="date_from" value="' . esc_attr((string) $analytics_filters['date_from']) . '"></label><label><span>' . esc_html__('До', 'leadforms-go') . '</span><input type="date" name="date_to" value="' . esc_attr((string) $analytics_filters['date_to']) . '"></label>';
+		echo '<label><span>' . esc_html__('Форма', 'leadforms-go') . '</span><select name="form_id"><option value="0">' . esc_html__('Усі форми', 'leadforms-go') . '</option>';
+		foreach (Repositories::form_summaries() as $form) echo '<option value="' . (int) $form['id'] . '"' . selected($analytics_filters['form_id'], (int) $form['id'], false) . '>' . esc_html((string) $form['name']) . '</option>';
+		echo '</select></label><label><span>UTM source</span><input type="text" name="utm_source" value="' . esc_attr((string) $analytics_filters['utm_source']) . '"></label><label><span>UTM campaign</span><input type="text" name="utm_campaign" value="' . esc_attr((string) $analytics_filters['utm_campaign']) . '"></label><div class="lfg-analytics-filter-actions"><button class="button button-primary" type="submit">' . esc_html__('Застосувати', 'leadforms-go') . '</button><a class="button" href="' . esc_url(admin_url('admin.php?page=leadforms-go')) . '">' . esc_html__('Скинути', 'leadforms-go') . '</a></div></form></details>';
 		echo '<div class="lfg-dashboard-stats">';
 		$cards = [
-			['icon' => 'feedback', 'value' => $stats['forms'], 'label' => __('Активні форми', 'leadforms-go')],
-			['icon' => 'email-alt', 'value' => $stats['today'], 'label' => __('Заявки сьогодні', 'leadforms-go')],
-			['icon' => 'clock', 'value' => $queue['queued'], 'label' => __('У черзі', 'leadforms-go')],
-			['icon' => 'warning', 'value' => $stats['failed_today'], 'label' => __('Помилки сьогодні', 'leadforms-go')],
-			['icon' => 'yes-alt', 'value' => $stats['success_rate'] . '%', 'label' => __('Успішна доставка', 'leadforms-go')],
-			['icon' => 'visibility', 'value' => $stats['views_week'], 'label' => __('Перегляди форм за 7 днів', 'leadforms-go')],
-			['icon' => 'chart-line', 'value' => $stats['conversion_rate'] . '%', 'label' => __('Конверсія за 7 днів', 'leadforms-go')],
+			['icon' => 'email-alt', 'value' => $stats['total'], 'label' => __('Заявки', 'leadforms-go'), 'hint' => __('усі звернення за період', 'leadforms-go')],
+			['icon' => 'chart-line', 'value' => $stats['conversion_rate'] . '%', 'label' => __('Конверсія', 'leadforms-go'), 'hint' => __('без урахування спаму', 'leadforms-go')],
+			['icon' => 'groups', 'value' => $stats['unique_contacts'], 'label' => __('Унікальні контакти', 'leadforms-go')],
+			['icon' => 'update', 'value' => $stats['repeats'], 'label' => __('Повторні звернення', 'leadforms-go')],
 		];
 		foreach ($cards as $card) {
-			printf('<article class="lfg-stat-card"><span class="dashicons dashicons-%s"></span><div><strong>%s</strong><span>%s</span></div></article>', esc_attr($card['icon']), esc_html((string) $card['value']), esc_html($card['label']));
+			printf('<article class="lfg-stat-card"><span class="dashicons dashicons-%s"></span><div><strong>%s</strong><span>%s</span>%s</div></article>', esc_attr($card['icon']), esc_html((string) $card['value']), esc_html($card['label']), isset($card['hint']) ? '<small>' . esc_html($card['hint']) . '</small>' : '');
 		}
-		echo '</div><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('UTM-джерела за 7 днів', 'leadforms-go') . '</h2></div><div class="lfg-utm-sources">';
-		if (($stats['top_sources'] ?? []) === []) echo '<p class="lfg-empty-state">' . esc_html__('Даних про джерела ще немає.', 'leadforms-go') . '</p>';
-		else foreach ($stats['top_sources'] as $source) printf('<div class="lfg-utm-source"><span>%s</span><strong>%d</strong></div>', esc_html((string) $source['source']), (int) $source['submissions']);
-		echo '</div></div><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Інтеграції', 'leadforms-go') . '</h2><a href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Керувати', 'leadforms-go') . '</a></div><div class="lfg-grid">';
+		$max_day = 1;
+		foreach ($stats['series'] as $point) $max_day = max($max_day, (int) $point['new'] + (int) $point['repeat']);
+		echo '</div><div class="lfg-secondary-metrics"><span><strong>' . (int) $stats['views'] . '</strong>' . esc_html__('переглядів форм', 'leadforms-go') . '</span><span><strong>' . (int) $stats['spam'] . '</strong>' . esc_html__('спам-заявок', 'leadforms-go') . '</span><span><strong>' . (int) $queue['queued'] . '</strong>' . esc_html__('доставок у черзі', 'leadforms-go') . '</span></div><div class="lfg-analytics-main"><div class="lfg-analytics-chart-card"><div class="lfg-section-heading"><h3>' . esc_html__('Динаміка заявок', 'leadforms-go') . '</h3><span>' . esc_html__('Нові та повторні', 'leadforms-go') . '</span></div><div class="lfg-analytics-chart">';
+		foreach ($stats['series'] as $point) {
+			$new_height = round(((int) $point['new'] / $max_day) * 100, 2);
+			$repeat_height = round(((int) $point['repeat'] / $max_day) * 100, 2);
+			printf('<div class="lfg-chart-day" title="%s"><div class="lfg-chart-bars"><span class="is-new" style="height:%s%%"></span><span class="is-repeat" style="height:%s%%"></span></div><time>%s</time></div>', esc_attr(sprintf(__('Нові: %1$d, повторні: %2$d', 'leadforms-go'), (int) $point['new'], (int) $point['repeat'])), esc_attr((string) $new_height), esc_attr((string) $repeat_height), esc_html(wp_date('d.m', strtotime((string) $point['day']))));
+		}
+		echo '</div><div class="lfg-chart-legend"><span class="is-new">' . esc_html__('Нові', 'leadforms-go') . '</span><span class="is-repeat">' . esc_html__('Повторні', 'leadforms-go') . '</span></div></div><aside class="lfg-analytics-leaders"><div class="lfg-section-heading"><h3>' . esc_html__('Найкращі форми', 'leadforms-go') . '</h3></div><div class="lfg-utm-sources">';
+		if ($stats['top_forms'] === []) echo '<p class="lfg-empty-state">' . esc_html__('Даних за вибраний період немає.', 'leadforms-go') . '</p>';
+		else foreach (array_slice($stats['top_forms'], 0, 5) as $row) printf('<div class="lfg-utm-source"><span>%s</span><strong>%d</strong></div>', esc_html((string) $row['label']), (int) $row['submissions']);
+		echo '</div></aside></div><details class="lfg-dashboard-details"><summary>' . esc_html__('Детальні зрізи за формами та рекламою', 'leadforms-go') . '<span class="dashicons dashicons-arrow-down-alt2" aria-hidden="true"></span></summary><div class="lfg-analytics-breakdowns">';
+		foreach ([__('Форми', 'leadforms-go') => $stats['top_forms'], __('UTM-джерела', 'leadforms-go') => $stats['top_sources'], __('UTM-кампанії', 'leadforms-go') => $stats['top_campaigns']] as $heading => $rows) {
+			echo '<div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html($heading) . '</h2></div><div class="lfg-utm-sources">';
+			if ($rows === []) echo '<p class="lfg-empty-state">' . esc_html__('Даних за вибраний період немає.', 'leadforms-go') . '</p>';
+			else foreach ($rows as $row) printf('<div class="lfg-utm-source"><span>%s</span><strong>%d</strong></div>', esc_html((string) $row['label']), (int) $row['submissions']);
+			echo '</div></div>';
+		}
+		echo '</div></details></section><details class="lfg-dashboard-details lfg-system-details"><summary><span><strong>' . esc_html__('Технічний стан', 'leadforms-go') . '</strong><small>' . esc_html__('Інтеграції, черга та cron', 'leadforms-go') . '</small></span><span class="lfg-system-summary"><span class="' . ($queue['healthy'] && (int) $stats['failed_today'] === 0 ? 'is-healthy' : 'is-warning') . '">' . ($queue['healthy'] && (int) $stats['failed_today'] === 0 ? esc_html__('Працює нормально', 'leadforms-go') : esc_html__('Потребує перевірки', 'leadforms-go')) . '</span><span class="dashicons dashicons-arrow-down-alt2" aria-hidden="true"></span></span></summary><div class="lfg-system-details__body"><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Інтеграції', 'leadforms-go') . '</h2><a href="' . esc_url(admin_url('admin.php?page=leadforms-go-settings')) . '">' . esc_html__('Керувати', 'leadforms-go') . '</a></div><div class="lfg-grid">';
 		$titles = ['telegram' => 'Telegram', 'sheets' => 'Google Sheets', 'crm' => 'CRM G-PLUS'];
 		foreach (Connectors::all() as $connector) {
 			$valid = $connector->validate_settings();
@@ -156,7 +214,7 @@ final class Admin
 		$last_run = $queue['last_run'] ? sprintf(__('%1$s тому · %2$s', 'leadforms-go'), human_time_diff($queue['last_run'], time()), $last_source) : __('Ще не запускався', 'leadforms-go');
 		$next_run = $queue['scheduled'] ? wp_date('d.m.Y H:i', (int) $queue['scheduled']) : '—';
 		if ($queue['cron_overdue']) $next_run .= ' · ' . __('прострочено', 'leadforms-go');
-		echo '</div></div><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Стан черги', 'leadforms-go') . '</h2></div><div class="lfg-queue-card"><div><span>' . esc_html__('Прострочені доставки', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['due']) . '</strong></div><div><span>' . esc_html__('Обробляються', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['processing']) . '</strong></div><div><span>' . esc_html__('Останній запуск', 'leadforms-go') . '</span><strong>' . esc_html($last_run) . '</strong></div><div><span>' . esc_html__('Наступний запуск', 'leadforms-go') . '</span><strong>' . esc_html($next_run) . '</strong></div></div></div>';
+		echo '</div></div><div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Стан черги', 'leadforms-go') . '</h2></div><div class="lfg-queue-card"><div><span>' . esc_html__('Прострочені доставки', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['due']) . '</strong></div><div><span>' . esc_html__('Обробляються', 'leadforms-go') . '</span><strong>' . esc_html((string) $queue['processing']) . '</strong></div><div><span>' . esc_html__('Останній запуск', 'leadforms-go') . '</span><strong>' . esc_html($last_run) . '</strong></div><div><span>' . esc_html__('Наступний запуск', 'leadforms-go') . '</span><strong>' . esc_html($next_run) . '</strong></div></div></div></div></details>';
 		echo '<div class="lfg-dashboard-section"><div class="lfg-section-heading"><h2>' . esc_html__('Останні заявки', 'leadforms-go') . '</h2><a href="' . esc_url(admin_url('admin.php?page=leadforms-go-history')) . '">' . esc_html__('Вся історія', 'leadforms-go') . '</a></div><div class="lfg-recent-submissions">';
 		$recent = Repositories::submissions(5, ['exclude_test' => true]);
 		if ($recent === []) {
@@ -278,7 +336,7 @@ final class Admin
 		];
 		$sheets_placeholders = ['spreadsheet_id' => 'https://docs.google.com/spreadsheets/d/…/edit', 'sheet_name' => __('Аркуш1', 'leadforms-go'), 'fields_order' => 'first_name, phone, consent'];
 		foreach ($sections as $section => $section_data) {
-			echo '<section class="lfg-card lfg-settings"><header><h2>' . esc_html($section_data['title']) . '</h2><label class="lfg-switch"><input type="checkbox" name="' . esc_attr($name . '[' . $section . '][enabled]') . '" value="1" ' . checked(! empty($s[$section]['enabled']), true, false) . '><span>' . esc_html__('Увімкнено', 'leadforms-go') . '</span></label></header>';
+			echo '<section class="lfg-card lfg-settings' . ($section === 'telegram' ? ' lfg-settings--telegram' : '') . '"><header><h2>' . esc_html($section_data['title']) . '</h2><label class="lfg-switch"><input type="checkbox" name="' . esc_attr($name . '[' . $section . '][enabled]') . '" value="1" ' . checked(! empty($s[$section]['enabled']), true, false) . '><span>' . esc_html__('Увімкнено', 'leadforms-go') . '</span></label></header>';
 			if ($section === 'telegram' && (defined('LEADFORMS_GO_TELEGRAM_TOKEN') || defined('LEADFORMS_GO_TELEGRAM_CHAT_ID'))) {
 				echo '<div class="notice notice-warning inline"><p>' . esc_html__('Telegram налаштовано через wp-config.php. Значення з адмінки не можуть замінити активні константи LEADFORMS_GO_TELEGRAM_TOKEN або LEADFORMS_GO_TELEGRAM_CHAT_ID.', 'leadforms-go') . '</p></div>';
 			}
@@ -292,8 +350,14 @@ final class Admin
 				echo '<label><span>' . esc_html($label) . '</span><input class="regular-text" type="' . ($is_secret ? 'password' : 'text') . '" name="' . esc_attr($name . '[' . $section . '][' . $key . ']') . '" value="' . esc_attr($value) . '" placeholder="' . esc_attr($placeholder) . '">' . $help . '</label>';
 			}
 			$test_label = in_array($section, ['telegram', 'sheets'], true) ? __('Зберегти й перевірити', 'leadforms-go') : __('Перевірити підключення', 'leadforms-go');
-			echo '<button type="button" class="button" data-lfg-test="' . esc_attr($section) . '">' . esc_html($test_label) . '</button><span class="lfg-test-result" aria-live="polite"></span>';
-			if ($section === 'telegram') echo '<small class="lfg-test-help">' . esc_html__('Поточні значення та стан перемикача буде збережено перед перевіркою.', 'leadforms-go') . '</small>';
+			if ($section === 'telegram') {
+				$https_ready = wp_is_using_https();
+				echo '<section class="lfg-telegram-mode ' . ($https_ready ? 'is-ready' : 'is-blocked') . '"><div class="lfg-telegram-mode__heading"><span class="dashicons dashicons-' . ($https_ready ? 'yes-alt' : 'lock') . '" aria-hidden="true"></span><div><h3>' . esc_html__('Інтерактивні дії', 'leadforms-go') . '</h3><span>' . ($https_ready ? esc_html__('HTTPS доступний', 'leadforms-go') : esc_html__('Потрібен публічний HTTPS', 'leadforms-go')) . '</span></div></div><p>' . ($https_ready ? esc_html__('Увімкніть інтерактивний режим у Telegram-маршруті потрібної форми. Нові повідомлення отримають кнопки «Взяти в роботу» та «Спам».', 'leadforms-go') : esc_html__('На локальному HTTP-сайті Telegram не зможе передати натискання кнопок назад у WordPress. Звичайні повідомлення продовжують надсилатися.', 'leadforms-go')) . '</p><div class="lfg-telegram-mode__actions"><a class="button" href="' . esc_url(admin_url('admin.php?page=leadforms-go-forms')) . '">' . esc_html__('Налаштувати у формах', 'leadforms-go') . '</a><span>' . esc_html__('Після натискання «Спам» бот окремо попросить підтвердження.', 'leadforms-go') . '</span></div></section>';
+				if ($https_ready) echo '<label class="lfg-telegram-webhook-option"><input type="checkbox" data-lfg-telegram-replace-webhook value="1"><span><strong>' . esc_html__('Замінити сторонній webhook', 'leadforms-go') . '</strong><small>' . esc_html__('Увімкніть лише якщо цей бот більше не використовується іншим сервісом.', 'leadforms-go') . '</small></span></label>';
+			}
+			echo '<div class="lfg-connector-test"><button type="button" class="button" data-lfg-test="' . esc_attr($section) . '">' . esc_html($test_label) . '</button><span class="lfg-test-result" aria-live="polite"></span>';
+			if ($section === 'telegram') echo '<small class="lfg-test-help">' . esc_html__('Перевірка зберігає поточні значення й надсилає окреме тестове повідомлення без кнопок заявки.', 'leadforms-go') . '</small>';
+			echo '</div>';
 			echo '</section>';
 			if ($section === 'sheets') $this->google_setup();
 		}
@@ -383,6 +447,7 @@ final class Admin
 		$button_icon = Form_Builder::sanitize_button_icon($button_icon);
 		$types = [
 			'none' => __('Без іконки', 'leadforms-go'),
+			'media_svg' => __('SVG з медіабібліотеки', 'leadforms-go'),
 			'svg' => __('SVG-код', 'leadforms-go'),
 			'fontawesome' => __('Font Awesome', 'leadforms-go'),
 		];
@@ -409,6 +474,9 @@ final class Admin
 		}
 		$html .= '</select><small>' . esc_html__('Font Awesome має бути підключений у темі або на сайті. Якщо потрібна іконка без залежностей — використайте SVG.', 'leadforms-go') . '</small></label>';
 		$html .= '<label data-lfg-button-icon-panel="fontawesome"><span>' . esc_html__('Клас Font Awesome', 'leadforms-go') . '</span><input type="text" name="button_icon_fa_class" value="' . esc_attr($button_icon['fa_class']) . '" placeholder="fa-solid fa-arrow-right" data-lfg-button-icon-fa><small>' . esc_html__('Можна вибрати з каталогу або вписати свій клас Font Awesome.', 'leadforms-go') . '</small></label>';
+		$media_url = $button_icon['attachment_id'] > 0 ? wp_get_attachment_url($button_icon['attachment_id']) : '';
+		$media_url = is_string($media_url) ? $media_url : '';
+		$html .= '<div class="lfg-button-settings__media" data-lfg-button-icon-panel="media_svg"><span>' . esc_html__('SVG-файл', 'leadforms-go') . '</span><input type="hidden" name="button_icon_attachment_id" value="' . (int) $button_icon['attachment_id'] . '" data-lfg-button-icon-media-id data-svg-url="' . esc_attr($media_url) . '"><div class="lfg-button-icon-media-preview" data-lfg-button-icon-media-preview>' . ($media_url !== '' ? '<img src="' . esc_url($media_url) . '" alt="">' : '<span>' . esc_html__('SVG не вибрано', 'leadforms-go') . '</span>') . '</div><div class="lfg-button-icon-media-actions"><button type="button" class="button" data-lfg-select-button-svg>' . esc_html__('Вибрати SVG', 'leadforms-go') . '</button><button type="button" class="button" data-lfg-remove-button-svg' . ($media_url === '' ? ' hidden' : '') . '>' . esc_html__('Прибрати', 'leadforms-go') . '</button></div><small>' . esc_html__('Можна вибрати лише SVG-вкладення з медіабібліотеки. Інші формати будуть відхилені.', 'leadforms-go') . '</small></div>';
 		$html .= '<label class="lfg-button-settings__svg" data-lfg-button-icon-panel="svg"><span>' . esc_html__('SVG-код', 'leadforms-go') . '</span><textarea name="button_icon_svg" rows="6" data-lfg-button-icon-svg placeholder="<svg viewBox=&quot;0 0 24 24&quot;>...</svg>">' . esc_textarea($button_icon['svg']) . '</textarea><small>' . esc_html__('Вставляйте тільки сам SVG. Скрипти, стилі й небезпечні атрибути будуть видалені.', 'leadforms-go') . '</small></label>';
 		$html .= '</div></details>';
 		return $html;
@@ -459,6 +527,7 @@ final class Admin
 			'position' => self::scalar_string($_POST['button_icon_position'] ?? ''),
 			'fa_class' => self::scalar_string($_POST['button_icon_fa_class'] ?? ''),
 			'svg' => self::scalar_string($_POST['button_icon_svg'] ?? ''),
+			'attachment_id' => isset($_POST['button_icon_attachment_id']) ? absint($_POST['button_icon_attachment_id']) : 0,
 		]);
 		$default_locale = Form_Translations::normalize_locale(self::scalar_string($_POST['default_locale'] ?? '')) ?: Form_Translations::DEFAULT_LOCALE;
 		$raw_translations = isset($_POST['translations']) && is_string($_POST['translations']) ? json_decode(wp_unslash($_POST['translations']), true) : [];
@@ -502,6 +571,15 @@ final class Admin
 		wp_safe_redirect(admin_url('admin.php?page=leadforms-go-forms')); exit;
 	}
 
+	public function acknowledge_all(): void
+	{
+		$this->guard('leadforms_go_acknowledge_all');
+		$acknowledged = Repositories::acknowledge_all_new();
+		if ($acknowledged === false) wp_die(esc_html__('Не вдалося оновити заявки.', 'leadforms-go'), '', 500);
+		wp_safe_redirect(add_query_arg('acknowledged', $acknowledged, admin_url('admin.php?page=leadforms-go')));
+		exit;
+	}
+
 	public function test_connector(): void
 	{
 		$this->guard('leadforms_go_admin', 'nonce');
@@ -532,6 +610,11 @@ final class Admin
 					$token !== '' ? $token : (string) ($settings['token'] ?? ''),
 					$chat_id !== '' ? $chat_id : (string) ($settings['chat_id'] ?? '')
 				);
+				if ($result->success && ! empty($_POST['replace_webhook'])) {
+					$webhook = Telegram_Interactions::ensure_webhook($token !== '' ? $token : (string) ($settings['token'] ?? ''), true);
+					if (is_wp_error($webhook)) $result = new Result(false, 0, $webhook->get_error_message(), false);
+					else $result = new Result(true, $result->http_code, __('Підключення успішне, інтерактивний webhook налаштовано.', 'leadforms-go'), false);
+				}
 			} else {
 				$result = $connectors[$key]->test_connection();
 			}
@@ -596,12 +679,20 @@ final class Admin
 		if ($legacy) echo '<div class="notice notice-warning"><p>' . esc_html__('LeadForms Go імпортував старі дані. Вимкніть старі плагіни reIntegration, щоб уникнути дублювання обробників.', 'leadforms-go') . '</p></div>';
 	}
 
+	public function dedup_notice(): void
+	{
+		if (! current_user_can('manage_options') || get_option('leadforms_go_schema_version') !== '1.8.0' || get_option('leadforms_go_dedup_backfill_complete')) return;
+		echo '<div class="notice notice-info"><p>' . esc_html__('LeadForms Go фоново індексує старі заявки для визначення повторних звернень. Нові заявки вже обробляються одразу.', 'leadforms-go') . '</p></div>';
+	}
+
 	private function submission_list(): void
 	{
 		$filters = [
 			'form_id' => isset($_GET['form_id']) ? absint($_GET['form_id']) : 0,
 			'status' => sanitize_key(self::scalar_string($_GET['status'] ?? '')),
 			'connector' => sanitize_key(self::scalar_string($_GET['connector'] ?? '')),
+			'lead_state' => sanitize_key(self::scalar_string($_GET['lead_state'] ?? '')),
+			'duplicates' => sanitize_key(self::scalar_string($_GET['duplicates'] ?? '')),
 			'date_from' => $this->date_filter('date_from'),
 			'date_to' => $this->date_filter('date_to'),
 		];
@@ -618,7 +709,8 @@ final class Admin
 		foreach ($statuses as $key => $label) printf('<option value="%s"%s>%s</option>', esc_attr($key), selected($filters['status'], $key, false), esc_html($label));
 		echo '</select></label><label><span>' . esc_html__('Інтеграція', 'leadforms-go') . '</span><select name="connector"><option value="">' . esc_html__('Усі інтеграції', 'leadforms-go') . '</option>';
 		foreach ($titles as $key => $label) printf('<option value="%s"%s>%s</option>', esc_attr($key), selected($filters['connector'], $key, false), esc_html($label));
-		echo '</select></label><label><span>' . esc_html__('Від', 'leadforms-go') . '</span><input type="date" name="date_from" value="' . esc_attr($filters['date_from']) . '"></label><label><span>' . esc_html__('До', 'leadforms-go') . '</span><input type="date" name="date_to" value="' . esc_attr($filters['date_to']) . '"></label><div class="lfg-filter-actions"><button class="button button-primary" type="submit">' . esc_html__('Застосувати', 'leadforms-go') . '</button><a class="button" href="' . esc_url(admin_url('admin.php?page=leadforms-go-history')) . '">' . esc_html__('Скинути', 'leadforms-go') . '</a></div></form>';
+		echo '</select></label><label><span>' . esc_html__('Стан ліда', 'leadforms-go') . '</span><select name="lead_state"><option value="">' . esc_html__('Усі', 'leadforms-go') . '</option><option value="new"' . selected($filters['lead_state'], 'new', false) . '>' . esc_html__('Новий', 'leadforms-go') . '</option><option value="acknowledged"' . selected($filters['lead_state'], 'acknowledged', false) . '>' . esc_html__('У роботі', 'leadforms-go') . '</option><option value="spam"' . selected($filters['lead_state'], 'spam', false) . '>' . esc_html__('Спам', 'leadforms-go') . '</option></select></label>';
+		echo '<label><span>' . esc_html__('Повторність', 'leadforms-go') . '</span><select name="duplicates"><option value="">' . esc_html__('Усі', 'leadforms-go') . '</option><option value="repeat"' . selected($filters['duplicates'], 'repeat', false) . '>' . esc_html__('Повторні', 'leadforms-go') . '</option><option value="unique"' . selected($filters['duplicates'], 'unique', false) . '>' . esc_html__('Нові контакти', 'leadforms-go') . '</option></select></label><label><span>' . esc_html__('Від', 'leadforms-go') . '</span><input type="date" name="date_from" value="' . esc_attr($filters['date_from']) . '"></label><label><span>' . esc_html__('До', 'leadforms-go') . '</span><input type="date" name="date_to" value="' . esc_attr($filters['date_to']) . '"></label><div class="lfg-filter-actions"><button class="button button-primary" type="submit">' . esc_html__('Застосувати', 'leadforms-go') . '</button><a class="button" href="' . esc_url(admin_url('admin.php?page=leadforms-go-history')) . '">' . esc_html__('Скинути', 'leadforms-go') . '</a></div></form>';
 
 		echo '<form class="lfg-history-list" method="post" action="' . esc_url(admin_url('admin-post.php')) . '"><input type="hidden" name="action" value="leadforms_go_bulk_retry">';
 		wp_nonce_field('leadforms_go_bulk_retry');
@@ -629,7 +721,11 @@ final class Admin
 			$payload = is_array($payload) ? $payload : [];
 			$payload = Submission_Presenter::for_admin($payload, (int) $row['form_id'], (string) ($row['locale'] ?? ''));
 			$test_badge = ! empty($row['is_test']) ? '<span class="lfg-delivery-status is-processing">' . esc_html__('Тест', 'leadforms-go') . '</span>' : '';
-			echo '<tr><th class="check-column"><input type="checkbox" name="submission_ids[]" value="' . (int) $row['id'] . '" aria-label="' . esc_attr(sprintf(__('Вибрати заявку #%d', 'leadforms-go'), (int) $row['id'])) . '"></th><td><a class="lfg-submission-id" href="' . esc_url(admin_url('admin.php?page=leadforms-go-history&submission=' . (int) $row['id'])) . '">#' . (int) $row['id'] . '</a>' . $test_badge . '<span>' . esc_html($row['form_name'] ?: __('Видалена або імпортована форма', 'leadforms-go')) . '</span><time>' . esc_html(wp_date('d.m.Y H:i', strtotime((string) $row['created_at']))) . '</time></td><td><div class="lfg-payload-preview">' . esc_html(self::payload_preview($payload)) . '</div></td><td><div class="lfg-delivery-stack">';
+			$lead_badge = ($row['lead_state'] ?? 'new') === 'spam' ? '<span class="lfg-delivery-status is-failed">' . esc_html__('Спам', 'leadforms-go') . '</span>' : (($row['lead_state'] ?? 'new') === 'acknowledged' ? '<span class="lfg-delivery-status is-success">' . esc_html__('У роботі', 'leadforms-go') . '</span>' : '');
+			$duplicate_badge = ! empty($row['duplicate_of'])
+				? '<a class="lfg-duplicate-badge" href="' . esc_url(admin_url('admin.php?page=leadforms-go-history&submission=' . (int) $row['duplicate_of'])) . '" title="' . esc_attr(sprintf(__('Відкрити попередню заявку #%d', 'leadforms-go'), (int) $row['duplicate_of'])) . '"><span class="dashicons dashicons-update" aria-hidden="true"></span>' . esc_html(sprintf(__('Повторне · #%d', 'leadforms-go'), (int) $row['duplicate_of'])) . '</a>'
+				: '';
+			echo '<tr><th class="check-column"><input type="checkbox" name="submission_ids[]" value="' . (int) $row['id'] . '" aria-label="' . esc_attr(sprintf(__('Вибрати заявку #%d', 'leadforms-go'), (int) $row['id'])) . '"></th><td><div class="lfg-history-submission-head"><a class="lfg-submission-id" href="' . esc_url(admin_url('admin.php?page=leadforms-go-history&submission=' . (int) $row['id'])) . '">#' . (int) $row['id'] . '</a><div class="lfg-history-submission-badges">' . $test_badge . $lead_badge . $duplicate_badge . '</div></div><span class="lfg-history-form-name">' . esc_html($row['form_name'] ?: __('Видалена або імпортована форма', 'leadforms-go')) . '</span><time>' . esc_html(wp_date('d.m.Y H:i', strtotime((string) $row['created_at']))) . '</time></td><td><div class="lfg-payload-preview">' . esc_html(self::payload_preview($payload)) . '</div></td><td><div class="lfg-delivery-stack">';
 			if ($row['deliveries'] === []) echo '<span class="lfg-delivery-status is-success">' . esc_html__('Без інтеграцій', 'leadforms-go') . '</span>';
 			foreach ($row['deliveries'] as $delivery) printf('<span class="lfg-delivery-status is-%s" title="%s"><strong>%s</strong><span>%s</span></span>', esc_attr($delivery['status']), esc_attr((string) $delivery['error_message']), esc_html(self::delivery_title($delivery, $titles)), esc_html(self::status_label((string) $delivery['status'])));
 			$source = (string) $row['referer'];
@@ -658,7 +754,9 @@ final class Admin
 			echo '<button class="button button-primary" type="submit"><span class="dashicons dashicons-update"></span>' . esc_html__('Повторити невдалі доставки', 'leadforms-go') . '</button></form>';
 		}
 		$submission_type = ! empty($submission['is_test']) ? __('Тестова', 'leadforms-go') : __('Звичайна', 'leadforms-go');
-		echo '</div><section class="lfg-submission-summary"><div><span>' . esc_html__('Заявка', 'leadforms-go') . '</span><strong>#' . $submission_id . '</strong></div><div><span>' . esc_html__('Тип', 'leadforms-go') . '</span><strong>' . esc_html($submission_type) . '</strong></div><div><span>' . esc_html__('Форма', 'leadforms-go') . '</span><strong>' . esc_html($submission['form_name'] ?: __('Видалена або імпортована форма', 'leadforms-go')) . '</strong></div><div><span>' . esc_html__('Мова', 'leadforms-go') . '</span><strong>' . esc_html((string) ($submission['locale'] ?: Form_Translations::DEFAULT_LOCALE)) . '</strong></div><div><span>' . esc_html__('Створено', 'leadforms-go') . '</span><strong>' . esc_html(wp_date('d.m.Y H:i:s', strtotime((string) $submission['created_at']))) . '</strong></div><div><span>' . esc_html__('Статус', 'leadforms-go') . '</span><strong><span class="lfg-delivery-status is-' . esc_attr($submission['status']) . '">' . esc_html(self::status_label((string) $submission['status'])) . '</span></strong></div></section>';
+		$lead_label = match ((string) ($submission['lead_state'] ?? 'new')) { 'acknowledged' => __('У роботі', 'leadforms-go'), 'spam' => __('Спам', 'leadforms-go'), default => __('Новий', 'leadforms-go') };
+		$duplicate_link = ! empty($submission['duplicate_of']) ? '<a href="' . esc_url(admin_url('admin.php?page=leadforms-go-history&submission=' . (int) $submission['duplicate_of'])) . '">#' . (int) $submission['duplicate_of'] . '</a>' : '—';
+		echo '</div><section class="lfg-submission-summary"><div><span>' . esc_html__('Заявка', 'leadforms-go') . '</span><strong>#' . $submission_id . '</strong></div><div><span>' . esc_html__('Тип', 'leadforms-go') . '</span><strong>' . esc_html($submission_type) . '</strong></div><div><span>' . esc_html__('Форма', 'leadforms-go') . '</span><strong>' . esc_html($submission['form_name'] ?: __('Видалена або імпортована форма', 'leadforms-go')) . '</strong></div><div><span>' . esc_html__('Стан ліда', 'leadforms-go') . '</span><strong>' . esc_html($lead_label) . '</strong></div><div><span>' . esc_html__('Попередня заявка', 'leadforms-go') . '</span><strong>' . $duplicate_link . '</strong></div><div><span>' . esc_html__('Створено', 'leadforms-go') . '</span><strong>' . esc_html(wp_date('d.m.Y H:i:s', strtotime((string) $submission['created_at']))) . '</strong></div><div><span>' . esc_html__('Статус доставки', 'leadforms-go') . '</span><strong><span class="lfg-delivery-status is-' . esc_attr($submission['status']) . '">' . esc_html(self::status_label((string) $submission['status'])) . '</span></strong></div></section>';
 		$payload = json_decode((string) $submission['payload'], true);
 		$payload = is_array($payload) ? $payload : [];
 		$payload = Submission_Presenter::for_admin($payload, (int) $submission['form_id'], (string) ($submission['locale'] ?? ''));

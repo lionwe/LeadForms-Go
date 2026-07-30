@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="uk">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>LeadForms Go — покращення dashboard</title>
+	<style>
+		:root { color-scheme: light; --ink:#172033; --muted:#657089; --line:#dfe3ec; --blue:#3858e9; --soft:#f5f7fb; --green:#087f3d; }
+		* { box-sizing:border-box; }
+		body { margin:0; background:var(--soft); color:var(--ink); font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+		main { width:min(1120px,calc(100% - 32px)); margin:40px auto; }
+		header,section { margin-bottom:24px; padding:28px; border:1px solid var(--line); border-radius:18px; background:#fff; }
+		h1,h2,h3,p { margin-top:0; }
+		h1 { max-width:760px; font-size:clamp(32px,5vw,56px); line-height:1.05; }
+		h2 { margin-bottom:16px; font-size:24px; }
+		h3 { margin-bottom:8px; font-size:17px; }
+		.eyebrow { color:var(--blue); font-size:13px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
+		.lead { max-width:760px; color:var(--muted); font-size:18px; }
+		.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+		.card { padding:18px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+		.card p,li { color:var(--muted); }
+		img { display:block; width:100%; border:1px solid var(--line); border-radius:12px; }
+		figure { margin:0; }
+		figcaption { margin-top:10px; color:var(--muted); font-size:13px; }
+		ol { display:grid; gap:12px; padding-left:22px; }
+		.flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+		.flow div { padding:14px; border-radius:12px; background:var(--soft); font-weight:650; }
+		.done { color:var(--green); font-weight:700; }
+		a { color:var(--blue); }
+		@media (max-width:760px) { .grid,.flow { grid-template-columns:1fr; } header,section { padding:20px; } }
+	</style>
+</head>
+<body>
+<main>
+	<header>
+		<p class="eyebrow">Design improvement · 24.07.2026</p>
+		<h1>Dashboard має відповідати: що робити зараз і що змінилося</h1>
+		<p class="lead">Початковий екран показував усі дані як однаково важливі. Через це фільтри, вісім KPI, службові стани й великий графік конкурували між собою та не давали менеджеру зрозумілого першого кроку.</p>
+	</header>
+
+	<section>
+		<h2>Початковий стан</h2>
+		<figure>
+			<img src="references/current.png" alt="Початковий dashboard LeadForms Go">
+			<figcaption>Головні проблеми: дубльований hero, постійно розгорнуті розширені фільтри, вісім рівнозначних KPI та завеликий графік.</figcaption>
+		</figure>
+	</section>
+
+	<section>
+		<h2>Нова інформаційна ієрархія</h2>
+		<div class="flow">
+			<div>1. Потребує дії</div>
+			<div>2. Чотири основні KPI</div>
+			<div>3. Динаміка й найкращі форми</div>
+			<div>4. Деталі та технічний стан</div>
+		</div>
+		<ol>
+			<li>Нові ліди, помилки й прострочені доставки стали конкретними переходами до потрібного списку.</li>
+			<li>На першому рівні залишені заявки, конверсія, унікальні контакти та повторні звернення.</li>
+			<li>Перегляди, спам і черга стали другорядним компактним рядком.</li>
+			<li>Розширені фільтри, рекламні зрізи, інтеграції та cron тепер розкриваються за потреби.</li>
+		</ol>
+		<p class="done">Рішення реалізовано в адмінці LeadForms Go.</p>
+	</section>
+
+	<section>
+		<h2>Референсні патерни</h2>
+		<div class="grid">
+			<figure class="card">
+				<img src="references/onepagecrm-dashboard.png" alt="Dashboard OnePageCRM">
+				<figcaption>OnePageCRM: невеликий набір ключових цифр і компактні фільтри за періодом. <a href="https://help.onepagecrm.com/article/747-dashboard">Джерело</a>.</figcaption>
+			</figure>
+			<figure class="card">
+				<img src="references/hubspot-form-analytics.png" alt="Аналітика форм HubSpot">
+				<figcaption>HubSpot: швидкі фільтри відділені від розширених, а звіти згруповані за конкретними питаннями. <a href="https://knowledge.hubspot.com/forms/analyze-form-submission-reports">Джерело</a>.</figcaption>
+			</figure>
+		</div>
+	</section>
+
+	<section>
+		<h2>Принципи для подальших змін</h2>
+		<div class="grid">
+			<div class="card"><h3>Дія раніше за діагностику</h3><p>Проблеми й необроблені заявки мають бути вище графіків та системної статистики.</p></div>
+			<div class="card"><h3>Не більше чотирьох KPI</h3><p>Решта чисел має пояснювати основні показники або жити в окремому технічному блоці.</p></div>
+			<div class="card"><h3>Progressive disclosure</h3><p>Рідко вживані фільтри та деталізацію варто показувати лише після явного запиту користувача.</p></div>
+			<div class="card"><h3>Один блок — одне питання</h3><p>Кожен модуль dashboard має мати зрозумілий заголовок і одну мету, а не бути просто контейнером для даних.</p></div>
+		</div>
+	</section>
+</main>
+</body>
+</html>

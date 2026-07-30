@@ -32,6 +32,8 @@ final class Delivery_Queue
 	{
 		wp_clear_scheduled_hook(self::HOOK);
 		wp_clear_scheduled_hook('leadforms_go_cleanup_submissions');
+		wp_clear_scheduled_hook('leadforms_go_dedup_backfill');
+		wp_clear_scheduled_hook(Telegram_Interactions::REMINDER_HOOK);
 		delete_option(self::LOCK_OPTION);
 	}
 

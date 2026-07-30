@@ -65,6 +65,8 @@ class LeadFormsGoAdmin {
 		this.buttonIconPosition = document.querySelector('[data-lfg-button-icon-position]');
 		this.buttonIconFa = document.querySelector('[data-lfg-button-icon-fa]');
 		this.buttonIconSvg = document.querySelector('[data-lfg-button-icon-svg]');
+		this.buttonIconMediaId = document.querySelector('[data-lfg-button-icon-media-id]');
+		this.buttonIconMediaPreview = document.querySelector('[data-lfg-button-icon-media-preview]');
 		this.faCatalog = document.querySelector('[data-lfg-fa-catalog]');
 		this.translationsInput = document.querySelector('[data-lfg-translations]');
 		this.defaultLocaleInput = document.querySelector('[data-lfg-default-locale]');
@@ -120,6 +122,8 @@ class LeadFormsGoAdmin {
 	async handleClick(event) {
 		const confirmLink = event.target.closest('[data-lfg-confirm]');
 		if (confirmLink && !window.confirm(this.config.confirmDelete)) event.preventDefault();
+		const acknowledgeAll = event.target.closest('[data-lfg-acknowledge-all]');
+		if (acknowledgeAll && !window.confirm(this.config.confirmAcknowledgeAll)) event.preventDefault();
 		const modeButton = event.target.closest('[data-lfg-mode]');
 		if (modeButton) this.setMode(modeButton.dataset.lfgMode);
 		const tile = event.target.closest('[data-lfg-add]');
@@ -140,6 +144,10 @@ class LeadFormsGoAdmin {
 		if (googleUpload) await this.uploadGoogleCredentials(googleUpload);
 		const googleRemove = event.target.closest('[data-lfg-google-remove]');
 		if (googleRemove) await this.removeGoogleCredentials(googleRemove);
+		const selectButtonSvg = event.target.closest('[data-lfg-select-button-svg]');
+		if (selectButtonSvg) this.selectButtonSvg();
+		const removeButtonSvg = event.target.closest('[data-lfg-remove-button-svg]');
+		if (removeButtonSvg) this.removeButtonSvg();
 	}
 
 	setMode(mode) {
@@ -263,10 +271,13 @@ class LeadFormsGoAdmin {
 		const position = this.buttonIconPosition?.value === 'before' ? 'before' : 'after';
 		const faClass = (this.buttonIconFa?.value || '').trim().split(/\s+/).filter((token) => /^(fa|fas|far|fab|fal|fa-[a-z0-9-]+)$/i.test(token)).slice(0, 6).join(' ');
 		const svg = (this.buttonIconSvg?.value || '').trim();
+		const attachmentId = Number.parseInt(this.buttonIconMediaId?.value || '0', 10) || 0;
+		const mediaUrl = this.buttonIconMediaId?.dataset.svgUrl || '';
 		const hasFaIcon = faClass.split(/\s+/).some((token) => token.startsWith('fa-') && !['fa-solid', 'fa-regular', 'fa-brands'].includes(token));
-		if (type === 'fontawesome' && faClass && hasFaIcon) return { type, position, faClass, svg: '' };
-		if (type === 'svg' && svg) return { type, position, faClass: '', svg };
-		return { type: 'none', position, faClass: '', svg: '' };
+		if (type === 'fontawesome' && faClass && hasFaIcon) return { type, position, faClass, svg: '', attachmentId: 0, mediaUrl: '' };
+		if (type === 'svg' && svg) return { type, position, faClass: '', svg, attachmentId: 0, mediaUrl: '' };
+		if (type === 'media_svg' && attachmentId > 0 && mediaUrl) return { type, position, faClass: '', svg: '', attachmentId, mediaUrl };
+		return { type: 'none', position, faClass: '', svg: '', attachmentId: 0, mediaUrl: '' };
 	}
 
 	updateButtonIconPanels() {
@@ -296,7 +307,70 @@ class LeadFormsGoAdmin {
 			wrapper.append(svg);
 			return wrapper;
 		}
+		if (icon.type === 'media_svg' && icon.mediaUrl) {
+			const wrapper = document.createElement('span');
+			wrapper.className = 'btn__icon leadforms-go-button__icon leadforms-go-button__icon--media-svg';
+			wrapper.setAttribute('aria-hidden', 'true');
+			const image = document.createElement('img');
+			image.src = icon.mediaUrl;
+			image.alt = '';
+			wrapper.append(image);
+			return wrapper;
+		}
 		return null;
+	}
+
+	selectButtonSvg() {
+		if (!window.wp?.media || !this.buttonIconMediaId) return;
+		const frame = window.wp.media({
+			title: this.config.builder.selectSvg,
+			button: { text: this.config.builder.useSvg },
+			library: { type: 'image/svg+xml' },
+			multiple: false,
+		});
+		frame.on('select', () => {
+			const attachment = frame.state().get('selection').first()?.toJSON();
+			const url = String(attachment?.url || '');
+			let isSvgUrl = false;
+			try { isSvgUrl = new URL(url, window.location.origin).pathname.toLowerCase().endsWith('.svg'); } catch { isSvgUrl = false; }
+			if (!attachment || attachment.mime !== 'image/svg+xml' || !isSvgUrl) {
+				window.alert(this.config.builder.invalidSvgFile);
+				return;
+			}
+			this.buttonIconMediaId.value = String(attachment.id || 0);
+			this.buttonIconMediaId.dataset.svgUrl = url;
+			this.renderButtonSvgSelection();
+			this.syncCodePreview();
+			this.renderPreview();
+		});
+		frame.open();
+	}
+
+	removeButtonSvg() {
+		if (!this.buttonIconMediaId) return;
+		this.buttonIconMediaId.value = '0';
+		this.buttonIconMediaId.dataset.svgUrl = '';
+		this.renderButtonSvgSelection();
+		this.syncCodePreview();
+		this.renderPreview();
+	}
+
+	renderButtonSvgSelection() {
+		if (!this.buttonIconMediaPreview || !this.buttonIconMediaId) return;
+		const url = this.buttonIconMediaId.dataset.svgUrl || '';
+		this.buttonIconMediaPreview.replaceChildren();
+		if (url) {
+			const image = document.createElement('img');
+			image.src = url;
+			image.alt = '';
+			this.buttonIconMediaPreview.append(image);
+		} else {
+			const empty = document.createElement('span');
+			empty.textContent = this.config.builder.svgNotSelected;
+			this.buttonIconMediaPreview.append(empty);
+		}
+		const remove = document.querySelector('[data-lfg-remove-button-svg]');
+		if (remove) remove.hidden = !url;
 	}
 
 	safeSvgElement(value) {
@@ -487,6 +561,9 @@ class LeadFormsGoAdmin {
 		if (icon.type === 'svg' && icon.svg) {
 			return `    <span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--svg" aria-hidden="true">${icon.svg}</span>`;
 		}
+		if (icon.type === 'media_svg' && icon.mediaUrl) {
+			return `    <span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--media-svg" aria-hidden="true"><img src="${escape(icon.mediaUrl)}" alt="" decoding="async"></span>`;
+		}
 		return '';
 	}
 
@@ -617,6 +694,8 @@ class LeadFormsGoAdmin {
 				});
 				const enabled = section?.querySelector('[name="leadforms_go_settings[telegram][enabled]"]');
 				body.append('enabled', enabled?.checked ? '1' : '');
+				const replaceWebhook = section?.querySelector('[data-lfg-telegram-replace-webhook]');
+				body.append('replace_webhook', replaceWebhook?.checked ? '1' : '');
 			}
 			const response = await fetch(this.config.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body, signal: controller.signal });
 			const result = await response.json();

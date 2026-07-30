@@ -130,8 +130,9 @@ final class Repositories
 			'next_attempt_at' => $next_attempt,
 			'last_attempt_at' => $now,
 			'external_reference' => sanitize_text_field($result->external_reference),
+			'external_meta' => wp_json_encode($result->external_meta, JSON_UNESCAPED_UNICODE) ?: '{}',
 			'updated_at' => $now,
-		], ['id' => (int) $delivery['id']], ['%s', '%d', '%s', '%d', '%d', '%s', '%s', '%s', '%s'], ['%d']);
+		], ['id' => (int) $delivery['id']], ['%s', '%d', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s'], ['%d']);
 		if ($updated === false) return 'failed';
 		$attempt_number = (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(MAX(attempt_number), 0) FROM {$tables['attempts']} WHERE delivery_id = %d", (int) $delivery['id'])) + 1;
 		$wpdb->insert($tables['attempts'], [
@@ -255,6 +256,51 @@ final class Repositories
 		return (new Delivery_Repository())->find($delivery_id);
 	}
 
+	public static function set_lead_state(int $submission_id, string $state): bool
+	{
+		global $wpdb;
+		if (! in_array($state, ['new', 'acknowledged', 'spam'], true)) return false;
+		$table = Database::tables()['submissions'];
+		$data = ['lead_state' => $state];
+		$formats = ['%s'];
+		if ($state === 'acknowledged') {
+			$data['acknowledged_at'] = current_time('mysql');
+			$formats[] = '%s';
+		} elseif ($state === 'spam') {
+			$data['spam_at'] = current_time('mysql');
+			$formats[] = '%s';
+		}
+		$updated = $wpdb->update($table, $data, ['id' => $submission_id], $formats, ['%d']);
+		if ($updated === false) return false;
+		if ($state === 'spam') {
+			$wpdb->query($wpdb->prepare("UPDATE {$table} SET duplicate_of = NULL, dedup_indexed = 0 WHERE duplicate_of = %d", $submission_id));
+			Lead_Deduplicator::schedule_backfill();
+		}
+		return true;
+	}
+
+	public static function acknowledge_all_new(): int|false
+	{
+		global $wpdb;
+		$table = Database::tables()['submissions'];
+		$updated = $wpdb->query($wpdb->prepare(
+			"UPDATE {$table} SET lead_state = 'acknowledged', acknowledged_at = %s WHERE lead_state = 'new' AND is_test = 0",
+			current_time('mysql')
+		));
+		return is_int($updated) ? $updated : false;
+	}
+
+	public static function mark_telegram_reminded(int $delivery_id): bool
+	{
+		global $wpdb;
+		$table = Database::tables()['deliveries'];
+		return $wpdb->query($wpdb->prepare(
+			"UPDATE {$table} SET telegram_reminder_sent_at = %s WHERE id = %d AND telegram_reminder_sent_at IS NULL",
+			current_time('mysql'),
+			$delivery_id
+		)) === 1;
+	}
+
 	public static function save_delivery(int $submission_id, string $connector, Result $result): void
 	{
 		$delivery_id = self::create_delivery($submission_id, $connector);
@@ -327,9 +373,9 @@ final class Repositories
 		return (new Statistics_Repository())->next_queued_timestamp();
 	}
 
-	public static function dashboard_stats(): array
+	public static function dashboard_stats(array $filters = []): array
 	{
-		return (new Statistics_Repository())->dashboard();
+		return (new Statistics_Repository())->dashboard($filters);
 	}
 
 	public static function record_view(int $form_id, string $source = '', string $campaign = ''): bool
@@ -360,9 +406,11 @@ final class Repositories
 		if ($ids === []) return 0;
 		$tables = Database::tables();
 		$placeholders = implode(',', array_fill(0, count($ids), '%d'));
+		$reindexed = $wpdb->query($wpdb->prepare("UPDATE {$tables['submissions']} SET duplicate_of = NULL, dedup_indexed = 0 WHERE duplicate_of IN ({$placeholders})", $ids));
 		$wpdb->query($wpdb->prepare("DELETE a FROM {$tables['attempts']} a INNER JOIN {$tables['deliveries']} d ON d.id = a.delivery_id WHERE d.submission_id IN ({$placeholders})", $ids));
 		$wpdb->query($wpdb->prepare("DELETE FROM {$tables['deliveries']} WHERE submission_id IN ({$placeholders})", $ids));
 		$deleted = $wpdb->query($wpdb->prepare("DELETE FROM {$tables['submissions']} WHERE id IN ({$placeholders})", $ids));
+		if (is_int($reindexed) && $reindexed > 0) Lead_Deduplicator::schedule_backfill();
 		return is_int($deleted) ? $deleted : 0;
 	}
 
@@ -400,11 +448,15 @@ final class Repositories
 
 	private static function submission_where(array $filters): array
 	{
+		global $wpdb;
 		$conditions = [];
 		$args = [];
 		if (! empty($filters['exclude_test'])) $conditions[] = 's.is_test = 0';
 		if (! empty($filters['form_id'])) { $conditions[] = 's.form_id = %d'; $args[] = absint($filters['form_id']); }
 		if (! empty($filters['status']) && in_array($filters['status'], ['queued', 'processing', 'success', 'failed'], true)) { $conditions[] = 's.status = %s'; $args[] = $filters['status']; }
+		if (! empty($filters['lead_state']) && in_array($filters['lead_state'], ['new', 'acknowledged', 'spam'], true)) { $conditions[] = 's.lead_state = %s'; $args[] = $filters['lead_state']; }
+		if (($filters['duplicates'] ?? '') === 'repeat') $conditions[] = 's.duplicate_of IS NOT NULL';
+		elseif (($filters['duplicates'] ?? '') === 'unique') $conditions[] = 's.duplicate_of IS NULL';
 		if (! empty($filters['connector'])) { $tables = Database::tables(); $key = sanitize_key($filters['connector']); $conditions[] = "EXISTS (SELECT 1 FROM {$tables['deliveries']} df WHERE df.submission_id = s.id AND (df.connector = %s OR df.connector LIKE %s))"; $args[] = $key; $args[] = $wpdb->esc_like($key . '__') . '%'; }
 		$date_from = self::valid_date($filters['date_from'] ?? '');
 		$date_to = self::valid_date($filters['date_to'] ?? '');

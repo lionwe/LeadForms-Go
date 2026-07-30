@@ -21,6 +21,8 @@ final class Plugin
 		Database::maybe_upgrade();
 		$this->queue = new Delivery_Queue();
 		$this->queue->boot();
+		Telegram_Interactions::boot();
+		add_action('leadforms_go_dedup_backfill', [Lead_Deduplicator::class, 'backfill']);
 		add_action('leadforms_go_cleanup_submissions', [$this, 'cleanup_submissions']);
 		add_filter('wp_privacy_personal_data_exporters', [Privacy::class, 'register_exporter']);
 		add_filter('wp_privacy_personal_data_erasers', [Privacy::class, 'register_eraser']);

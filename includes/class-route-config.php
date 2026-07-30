@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Route_Config
 {
-	public const VERSION = 2;
+	public const VERSION = 3;
 	private const STATES = ['inherit', 'enabled', 'disabled'];
 	private const SYSTEM_VARIABLES = ['page_url', 'form_name', 'submitted_at', 'locale', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
 
@@ -20,6 +20,7 @@ final class Route_Config
 				'chat_id' => '',
 				'topic_id' => 0,
 				'parse_mode' => 'plain',
+				'interactive' => false,
 				'templates' => [],
 				'buttons' => [],
 			],
@@ -96,6 +97,7 @@ final class Route_Config
 				'chat_id' => sanitize_text_field((string) ($telegram['chat_id'] ?? '')),
 				'topic_id' => absint($telegram['topic_id'] ?? 0),
 				'parse_mode' => Telegram_Template::sanitize_mode((string) ($telegram['parse_mode'] ?? 'plain')),
+				'interactive' => ! empty($telegram['interactive']),
 				'templates' => $templates,
 				'buttons' => $buttons,
 			],

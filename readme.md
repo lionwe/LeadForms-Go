@@ -36,6 +36,10 @@ Each form has an Integrations tab for Telegram, Google Sheets, and CRM routes. A
 
 Telegram supports localized plain text, HTML, and MarkdownV2 templates, topics, and up to five inline buttons per locale. Google Sheets supports sheet discovery, sheet creation, visual column mapping, raw append, and exact email or phone update-or-append. Route tests create diagnostic submissions that are excluded from dashboard statistics.
 
+LeadForms Go identifies repeat contacts locally from keyed fingerprints of normalized phone numbers and email addresses. Repeat submissions are never blocked and continue through every configured destination. The dashboard can filter by date, form, UTM source, and campaign while separating unique contacts, repeat submissions, and spam.
+
+Telegram routes can optionally enable interactive triage. The bot adds “Взяти в роботу” and confirmed “Спам” actions and sends one reminder after 30 minutes while a submission remains new. Incoming actions require a public HTTPS REST endpoint, a Telegram webhook secret, a matching configured chat, and signed callback data. Existing third-party webhooks are never replaced unless the administrator explicitly requests it during the connection test.
+
 ## Security
 
 Public submissions use a per-form nonce, signed render context, honeypot, atomic IP/global rate limits, and a unique request ID. Optional Cloudflare Turnstile protection is verified server-side. Google Sheets stores visitor input as raw values so formulas are not evaluated.

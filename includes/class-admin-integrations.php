@@ -37,6 +37,7 @@ final class Admin_Integrations
 				<label><span><?php esc_html_e('Chat ID', 'leadforms-go'); ?></span><input type="text" data-lfg-route-input="telegram.chat_id" value="<?php echo esc_attr((string) $config['telegram']['chat_id']); ?>" placeholder="<?php esc_attr_e('Порожньо — глобальний chat ID', 'leadforms-go'); ?>"></label>
 				<label><span><?php esc_html_e('Topic ID', 'leadforms-go'); ?></span><input type="number" min="0" data-lfg-route-input="telegram.topic_id" value="<?php echo esc_attr((string) $config['telegram']['topic_id']); ?>"></label>
 				<label><span><?php esc_html_e('Формат', 'leadforms-go'); ?></span><select data-lfg-route-input="telegram.parse_mode"><option value="plain" <?php selected($config['telegram']['parse_mode'], 'plain'); ?>>Plain text</option><option value="HTML" <?php selected($config['telegram']['parse_mode'], 'HTML'); ?>>HTML</option><option value="MarkdownV2" <?php selected($config['telegram']['parse_mode'], 'MarkdownV2'); ?>>MarkdownV2</option></select></label>
+				<label class="lfg-route-checkbox"><input type="checkbox" data-lfg-route-input="telegram.interactive" value="1" <?php checked(! empty($config['telegram']['interactive'])); ?>><span><?php esc_html_e('Кнопки «В роботу» / «Спам» і нагадування через 30 хв', 'leadforms-go'); ?></span></label>
 			</div>
 			<div class="lfg-route-variables"><strong><?php esc_html_e('Доступні змінні', 'leadforms-go'); ?></strong><?php foreach ($variables as $variable) echo '<code>{' . esc_html($variable) . '}</code>'; ?></div>
 			<?php foreach ($locales as $locale => $label) : ?>
