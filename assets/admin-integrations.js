@@ -56,9 +56,17 @@ class LeadFormsGoIntegrations {
 	}
 
 	handleInput(event) {
+		const profile = event.target.closest('[data-lfg-profile]');
+		if (profile) {
+			const connector = profile.dataset.lfgProfile;
+			const ids = [...this.root.querySelectorAll(`[data-lfg-profile="${connector}"]:checked`)].map((input) => input.value);
+			this.setPath(`${connector}.profile_ids`, ids);
+			this.sync();
+			return;
+		}
 		const input = event.target.closest('[data-lfg-route-input]');
 		if (input) {
-			let value = input.value;
+			let value = input.type === 'checkbox' ? input.checked : input.value;
 			if (input.type === 'number') value = Number.parseInt(value || '0', 10) || 0;
 			this.setPath(input.dataset.lfgRouteInput, value);
 			this.sync();
@@ -216,7 +224,7 @@ class LeadFormsGoIntegrations {
 	}
 
 	async poll(data, result) { for(let attempt=0;attempt<10;attempt+=1){ await new Promise((resolve)=>window.setTimeout(resolve,1000)); try{const current=await this.request('leadforms_go_route_status',{delivery_id:data.delivery_id,submission_id:data.submission_id}); this.showDeliveryResult(result,current); if(!['queued','processing'].includes(current.status))return;}catch{return;} } }
-	showDeliveryResult(element,data){if(!element)return; element.className=`is-${data.status}`; const reference=data.external_reference?` · ${data.external_reference}`:''; element.textContent=data.status==='sent'?`${this.config.success}${reference}`:`${data.status} · HTTP ${data.http_code||'—'} · ${data.attempts||0} спроб${data.error_message?' · '+data.error_message:''}${reference}`;}
+	showDeliveryResult(element,data){if(!element)return; element.className=`is-${data.status}`; const reference=data.external_reference?` · ${data.external_reference}`:''; const warning=data.error_message?` · ${data.error_message}`:''; element.textContent=data.status==='sent'?`${this.config.success}${warning}${reference}`:`${data.status} · HTTP ${data.http_code||'—'} · ${data.attempts||0} спроб${warning}${reference}`;}
 
 	async listSheets() { const id=this.getPath('sheets.spreadsheet_id')||''; const data=await this.safeRequest('leadforms_go_sheets_list',{spreadsheet_id:id}); if(!data)return; this.populateSheets(data.sheets||[]); }
 	async createSheet(){const id=this.getPath('sheets.spreadsheet_id')||'';const name=this.root.querySelector('[data-lfg-new-sheet]')?.value||'';const data=await this.safeRequest('leadforms_go_sheets_create',{spreadsheet_id:id,sheet_name:name});if(data?.sheet){this.populateSheets([data.sheet],data.sheet.title);}}

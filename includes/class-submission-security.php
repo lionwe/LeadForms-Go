@@ -8,6 +8,7 @@ final class Submission_Security
 {
 	private const MIN_FILL_SECONDS = 1;
 	private const MAX_CONTEXT_AGE = 2 * DAY_IN_SECONDS;
+	private const DISPATCH_TOKEN_AGE = 5 * MINUTE_IN_SECONDS;
 	private const RATE_WINDOW = 10 * MINUTE_IN_SECONDS;
 
 	/** @return array{nonce:string, token:string} */
@@ -22,7 +23,7 @@ final class Submission_Security
 
 	public static function verify_context(int $form_id, string $nonce, string $token): bool
 	{
-		if (! wp_verify_nonce($nonce, self::nonce_action($form_id))) return false;
+		if (! self::verify_nonce($form_id, $nonce)) return false;
 		$parts = explode('.', $token, 2);
 		if (count($parts) !== 2 || ! ctype_digit($parts[0])) return false;
 		$timestamp = (int) $parts[0];
@@ -31,9 +32,30 @@ final class Submission_Security
 		return hash_equals(self::signature($form_id, $timestamp), $parts[1]);
 	}
 
+	public static function verify_nonce(int $form_id, string $nonce): bool
+	{
+		return $form_id > 0 && wp_verify_nonce($nonce, self::nonce_action($form_id)) !== false;
+	}
+
 	public static function valid_request_id(string $request_id): bool
 	{
 		return preg_match('/^[A-Za-z0-9_-]{16,64}$/', $request_id) === 1;
+	}
+
+	public static function dispatch_token(int $submission_id): string
+	{
+		$timestamp = time();
+		return $timestamp . '.' . self::dispatch_signature($submission_id, $timestamp);
+	}
+
+	public static function verify_dispatch_token(int $submission_id, string $token): bool
+	{
+		$parts = explode('.', $token, 2);
+		if ($submission_id <= 0 || count($parts) !== 2 || ! ctype_digit($parts[0])) return false;
+		$timestamp = (int) $parts[0];
+		$age = time() - $timestamp;
+		if ($age < 0 || $age > self::DISPATCH_TOKEN_AGE) return false;
+		return hash_equals(self::dispatch_signature($submission_id, $timestamp), $parts[1]);
 	}
 
 	public static function valid_origin(): bool
@@ -79,6 +101,11 @@ final class Submission_Security
 	private static function signature(int $form_id, int $timestamp): string
 	{
 		return hash_hmac('sha256', $form_id . '|' . $timestamp, wp_salt('auth'));
+	}
+
+	private static function dispatch_signature(int $submission_id, int $timestamp): string
+	{
+		return hash_hmac('sha256', 'dispatch|' . $submission_id . '|' . $timestamp, wp_salt('auth'));
 	}
 
 	private static function origin_authority(string $url): string

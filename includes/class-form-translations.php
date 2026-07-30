@@ -13,6 +13,8 @@ final class Form_Translations
 		$locales = [
 			'uk_UA' => __('Українська', 'leadforms-go'),
 			'en_US' => __('English', 'leadforms-go'),
+			'pl_PL' => __('Polski', 'leadforms-go'),
+			'de_DE' => __('Deutsch', 'leadforms-go'),
 		];
 		$wp_locale = self::normalize_locale(get_locale());
 		if ($wp_locale !== '' && ! isset($locales[$wp_locale])) {
@@ -38,7 +40,7 @@ final class Form_Translations
 		$language = strtolower($parts[0]);
 		$region = isset($parts[1]) ? strtoupper($parts[1]) : '';
 		if (! preg_match('/^[a-z]{2,3}$/', $language) || ($region !== '' && ! preg_match('/^[A-Z]{2}$/', $region))) return '';
-		if ($region === '' && in_array($language, ['uk', 'en'], true)) $region = $language === 'uk' ? 'UA' : 'US';
+		if ($region === '' && isset(['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE'][$language])) $region = ['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE'][$language];
 		return $region === '' ? $language : $language . '_' . $region;
 	}
 
@@ -56,8 +58,8 @@ final class Form_Translations
 
 	public static function default_messages(string $locale): array
 	{
-		$english = str_starts_with(strtolower($locale), 'en');
-		return $english ? [
+		$language = self::language($locale);
+		if ($language === 'en') return [
 			'sending' => 'Sending…',
 			'success' => 'Thank you! The form has been submitted.',
 			'error' => 'Could not submit the form. Please try again.',
@@ -67,7 +69,30 @@ final class Form_Translations
 			'phone' => 'Enter a valid phone number with at least %d digits.',
 			'tooLong' => 'Maximum length is %d characters.',
 			'emoji' => 'Emoji are not allowed.',
-		] : [
+		];
+		if ($language === 'pl') return [
+			'sending' => 'Wysyłanie…',
+			'success' => 'Dziękujemy! Formularz został wysłany.',
+			'error' => 'Nie udało się wysłać formularza. Spróbuj ponownie.',
+			'required' => 'Wypełnij to pole.',
+			'invalid' => 'Sprawdź poprawność wartości.',
+			'email' => 'Wpisz poprawny adres e-mail.',
+			'phone' => 'Wpisz poprawny numer telefonu — co najmniej %d cyfr.',
+			'tooLong' => 'Maksymalna długość to %d znaków.',
+			'emoji' => 'Emoji nie są dozwolone.',
+		];
+		if ($language === 'de') return [
+			'sending' => 'Wird gesendet…',
+			'success' => 'Vielen Dank! Das Formular wurde gesendet.',
+			'error' => 'Das Formular konnte nicht gesendet werden. Bitte versuchen Sie es erneut.',
+			'required' => 'Füllen Sie dieses Feld aus.',
+			'invalid' => 'Überprüfen Sie die Eingabe.',
+			'email' => 'Geben Sie eine gültige E-Mail-Adresse ein.',
+			'phone' => 'Geben Sie eine gültige Telefonnummer mit mindestens %d Ziffern ein.',
+			'tooLong' => 'Die maximale Länge beträgt %d Zeichen.',
+			'emoji' => 'Emojis sind nicht erlaubt.',
+		];
+		return [
 			'sending' => 'Відправка…',
 			'success' => 'Дякуємо! Форму успішно відправлено.',
 			'error' => 'Не вдалося відправити форму. Спробуйте ще раз.',
@@ -82,12 +107,18 @@ final class Form_Translations
 
 	public static function default_submit_label(string $locale): string
 	{
-		return self::is_english($locale) ? 'Send' : 'Надіслати';
+		return match (self::language($locale)) {
+			'en' => 'Send',
+			'pl' => 'Wyślij',
+			'de' => 'Senden',
+			default => 'Надіслати',
+		};
 	}
 
 	public static function default_fields(string $locale): array
 	{
-		if (self::is_english($locale)) {
+		$language = self::language($locale);
+		if ($language === 'en') {
 			return [
 				'first_name' => ['label' => 'First name', 'placeholder' => 'Your first name'],
 				'last_name' => ['label' => 'Last name', 'placeholder' => 'Your last name'],
@@ -97,6 +128,39 @@ final class Form_Translations
 				'city' => ['label' => 'City', 'placeholder' => 'Your city'],
 				'message' => ['label' => 'Message', 'placeholder' => 'Your message'],
 				'consent' => ['label' => 'Consent to personal data processing', 'placeholder' => ''],
+				'select' => ['label' => 'Select an option', 'placeholder' => 'Choose an option'],
+				'radio' => ['label' => 'Choose one option', 'placeholder' => ''],
+				'hidden' => ['label' => 'Hidden field', 'placeholder' => ''],
+			];
+		}
+		if ($language === 'pl') {
+			return [
+				'first_name' => ['label' => 'Imię', 'placeholder' => 'Twoje imię'],
+				'last_name' => ['label' => 'Nazwisko', 'placeholder' => 'Twoje nazwisko'],
+				'phone' => ['label' => 'Numer telefonu', 'placeholder' => 'Numer telefonu'],
+				'email' => ['label' => 'E-mail', 'placeholder' => 'nazwa@example.com'],
+				'company' => ['label' => 'Firma', 'placeholder' => 'Nazwa firmy'],
+				'city' => ['label' => 'Miasto', 'placeholder' => 'Twoje miasto'],
+				'message' => ['label' => 'Wiadomość', 'placeholder' => 'Twoja wiadomość'],
+				'consent' => ['label' => 'Zgoda na przetwarzanie danych osobowych', 'placeholder' => ''],
+				'select' => ['label' => 'Wybierz opcję', 'placeholder' => 'Wybierz opcję'],
+				'radio' => ['label' => 'Wybierz jedną opcję', 'placeholder' => ''],
+				'hidden' => ['label' => 'Ukryte pole', 'placeholder' => ''],
+			];
+		}
+		if ($language === 'de') {
+			return [
+				'first_name' => ['label' => 'Vorname', 'placeholder' => 'Ihr Vorname'],
+				'last_name' => ['label' => 'Nachname', 'placeholder' => 'Ihr Nachname'],
+				'phone' => ['label' => 'Telefonnummer', 'placeholder' => 'Telefonnummer'],
+				'email' => ['label' => 'E-Mail', 'placeholder' => 'name@example.com'],
+				'company' => ['label' => 'Unternehmen', 'placeholder' => 'Unternehmensname'],
+				'city' => ['label' => 'Stadt', 'placeholder' => 'Ihre Stadt'],
+				'message' => ['label' => 'Nachricht', 'placeholder' => 'Ihre Nachricht'],
+				'consent' => ['label' => 'Einwilligung zur Verarbeitung personenbezogener Daten', 'placeholder' => ''],
+				'select' => ['label' => 'Option auswählen', 'placeholder' => 'Option auswählen'],
+				'radio' => ['label' => 'Eine Option auswählen', 'placeholder' => ''],
+				'hidden' => ['label' => 'Ausgeblendetes Feld', 'placeholder' => ''],
 			];
 		}
 		return [
@@ -108,6 +172,9 @@ final class Form_Translations
 			'city' => ['label' => 'Місто', 'placeholder' => 'Ваше місто'],
 			'message' => ['label' => 'Повідомлення', 'placeholder' => 'Ваше повідомлення'],
 			'consent' => ['label' => 'Згода на обробку даних', 'placeholder' => ''],
+			'select' => ['label' => 'Вибір зі списку', 'placeholder' => 'Оберіть варіант'],
+			'radio' => ['label' => 'Один варіант', 'placeholder' => ''],
+			'hidden' => ['label' => 'Приховане поле', 'placeholder' => ''],
 		];
 	}
 
@@ -142,8 +209,9 @@ final class Form_Translations
 				$base_key = preg_replace('/_\d+$/', '', $key) ?: $key;
 				$field_defaults = $defaults[$base_key] ?? [];
 				$existing = is_array($current['fields'][$key] ?? null) ? $current['fields'][$key] : [];
-				$fallback_label = self::is_english($locale) ? ($field_defaults['label'] ?? '') : (string) ($field['label'] ?? ($field_defaults['label'] ?? $key));
-				$fallback_placeholder = self::is_english($locale) ? ($field_defaults['placeholder'] ?? '') : (string) ($field['placeholder'] ?? ($field_defaults['placeholder'] ?? ''));
+				$use_locale_defaults = self::language($locale) !== 'uk';
+				$fallback_label = $use_locale_defaults ? ($field_defaults['label'] ?? '') : (string) ($field['label'] ?? ($field_defaults['label'] ?? $key));
+				$fallback_placeholder = $use_locale_defaults ? ($field_defaults['placeholder'] ?? '') : (string) ($field['placeholder'] ?? ($field_defaults['placeholder'] ?? ''));
 				$current['fields'][$key] = [
 					'label' => sanitize_text_field((string) (($existing['label'] ?? '') ?: $fallback_label)),
 					'placeholder' => sanitize_text_field((string) (($existing['placeholder'] ?? '') ?: $fallback_placeholder)),
@@ -218,6 +286,14 @@ final class Form_Translations
 			}
 		}
 		$defaults = self::default_messages($locale);
+		if ($selected === [] && in_array(self::language($locale), ['en', 'pl', 'de'], true)) {
+			$default_fields = array_map(static fn (array $field): array => $field + ['options' => []], self::default_fields($locale));
+			return [
+				'submit_label' => self::default_submit_label($locale),
+				'messages' => $defaults,
+				'fields' => array_replace_recursive((array) ($base['fields'] ?? []), $default_fields),
+			];
+		}
 		return [
 			'submit_label' => (string) (($selected['submit_label'] ?? '') ?: ($base['submit_label'] ?? 'Надіслати')),
 			'messages' => array_replace($defaults, array_filter((array) ($base['messages'] ?? [])), array_filter((array) ($selected['messages'] ?? []))),
@@ -232,6 +308,7 @@ final class Form_Translations
 			$text = (array) ($translation['fields'][$key] ?? []);
 			$field['label'] = (string) (($text['label'] ?? '') ?: ($field['label'] ?? $key));
 			$field['placeholder'] = (string) ($text['placeholder'] ?? ($field['placeholder'] ?? ''));
+			$field['option_labels'] = self::sanitize_options($text['options'] ?? []);
 		}
 		unset($field);
 		return $schema;
@@ -243,8 +320,8 @@ final class Form_Translations
 		return array_values(array_filter(array_map(static fn (mixed $option): string => sanitize_text_field(is_scalar($option) ? (string) $option : ''), $options)));
 	}
 
-	private static function is_english(string $locale): bool
+	private static function language(string $locale): string
 	{
-		return str_starts_with(strtolower(self::normalize_locale($locale)), 'en');
+		return strtolower((string) strtok(self::normalize_locale($locale), '_'));
 	}
 }

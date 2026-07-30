@@ -11,6 +11,7 @@ final readonly class Result
 		public int $http_code = 0,
 		public string $message = '',
 		public ?bool $retryable = null,
-		public string $external_reference = ''
+		public string $external_reference = '',
+		public array $external_meta = []
 	) {}
 }

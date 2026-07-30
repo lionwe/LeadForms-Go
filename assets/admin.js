@@ -9,6 +9,42 @@ class LeadFormsGoAdmin {
 		document.addEventListener('click', (event) => this.handleClick(event));
 		document.addEventListener('change', (event) => this.handleChange(event));
 		this.initBuilder();
+		this.initSettingsTabs();
+	}
+
+	initSettingsTabs() {
+		const form = document.querySelector('[data-lfg-settings-form]');
+		if (!form) return;
+		const tabs = [...form.querySelectorAll('[data-lfg-settings-tab]')];
+		const panels = [...form.querySelectorAll('[data-lfg-settings-panel]')];
+		const activate = (name, focus = false) => {
+			if (!tabs.some((tab) => tab.dataset.lfgSettingsTab === name)) name = 'general';
+			tabs.forEach((tab) => {
+				const active = tab.dataset.lfgSettingsTab === name;
+				tab.classList.toggle('is-active', active);
+				tab.setAttribute('aria-selected', active ? 'true' : 'false');
+				tab.tabIndex = active ? 0 : -1;
+				if (active && focus) tab.focus();
+			});
+			panels.forEach((panel) => {
+				const active = panel.dataset.lfgSettingsPanel === name;
+				panel.hidden = !active;
+				panel.classList.toggle('is-active', active);
+			});
+			window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${name}`);
+		};
+		tabs.forEach((tab, index) => {
+			tab.addEventListener('click', () => activate(tab.dataset.lfgSettingsTab));
+			tab.addEventListener('keydown', (event) => {
+				if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+				event.preventDefault();
+				let next = event.key === 'Home' ? 0 : (event.key === 'End' ? tabs.length - 1 : index + (event.key === 'ArrowRight' ? 1 : -1));
+				if (next < 0) next = tabs.length - 1;
+				if (next >= tabs.length) next = 0;
+				activate(tabs[next].dataset.lfgSettingsTab, true);
+			});
+		});
+		activate(window.location.hash.replace('#', '') || 'general');
 	}
 
 	handleChange(event) {
@@ -29,6 +65,8 @@ class LeadFormsGoAdmin {
 		this.buttonIconPosition = document.querySelector('[data-lfg-button-icon-position]');
 		this.buttonIconFa = document.querySelector('[data-lfg-button-icon-fa]');
 		this.buttonIconSvg = document.querySelector('[data-lfg-button-icon-svg]');
+		this.buttonIconMediaId = document.querySelector('[data-lfg-button-icon-media-id]');
+		this.buttonIconMediaPreview = document.querySelector('[data-lfg-button-icon-media-preview]');
 		this.faCatalog = document.querySelector('[data-lfg-fa-catalog]');
 		this.translationsInput = document.querySelector('[data-lfg-translations]');
 		this.defaultLocaleInput = document.querySelector('[data-lfg-default-locale]');
@@ -84,6 +122,8 @@ class LeadFormsGoAdmin {
 	async handleClick(event) {
 		const confirmLink = event.target.closest('[data-lfg-confirm]');
 		if (confirmLink && !window.confirm(this.config.confirmDelete)) event.preventDefault();
+		const acknowledgeAll = event.target.closest('[data-lfg-acknowledge-all]');
+		if (acknowledgeAll && !window.confirm(this.config.confirmAcknowledgeAll)) event.preventDefault();
 		const modeButton = event.target.closest('[data-lfg-mode]');
 		if (modeButton) this.setMode(modeButton.dataset.lfgMode);
 		const tile = event.target.closest('[data-lfg-add]');
@@ -104,6 +144,10 @@ class LeadFormsGoAdmin {
 		if (googleUpload) await this.uploadGoogleCredentials(googleUpload);
 		const googleRemove = event.target.closest('[data-lfg-google-remove]');
 		if (googleRemove) await this.removeGoogleCredentials(googleRemove);
+		const selectButtonSvg = event.target.closest('[data-lfg-select-button-svg]');
+		if (selectButtonSvg) this.selectButtonSvg();
+		const removeButtonSvg = event.target.closest('[data-lfg-remove-button-svg]');
+		if (removeButtonSvg) this.removeButtonSvg();
 	}
 
 	setMode(mode) {
@@ -190,7 +234,7 @@ class LeadFormsGoAdmin {
 	resolvedFieldTranslation(field, locale = this.currentLocale) {
 		const current = this.fieldTranslation(field, locale);
 		const fallback = this.ensureTranslation(this.defaultLocaleInput?.value || 'uk_UA').fields[field.key] || {};
-		return { label: current.label || fallback.label || field.label || field.key, placeholder: current.placeholder || fallback.placeholder || field.placeholder || '' };
+		return { label: current.label || fallback.label || field.label || field.key, placeholder: current.placeholder || fallback.placeholder || field.placeholder || '', options: current.options?.length ? current.options : (fallback.options || field.options || []) };
 	}
 
 	setLocale(locale) {
@@ -227,10 +271,13 @@ class LeadFormsGoAdmin {
 		const position = this.buttonIconPosition?.value === 'before' ? 'before' : 'after';
 		const faClass = (this.buttonIconFa?.value || '').trim().split(/\s+/).filter((token) => /^(fa|fas|far|fab|fal|fa-[a-z0-9-]+)$/i.test(token)).slice(0, 6).join(' ');
 		const svg = (this.buttonIconSvg?.value || '').trim();
+		const attachmentId = Number.parseInt(this.buttonIconMediaId?.value || '0', 10) || 0;
+		const mediaUrl = this.buttonIconMediaId?.dataset.svgUrl || '';
 		const hasFaIcon = faClass.split(/\s+/).some((token) => token.startsWith('fa-') && !['fa-solid', 'fa-regular', 'fa-brands'].includes(token));
-		if (type === 'fontawesome' && faClass && hasFaIcon) return { type, position, faClass, svg: '' };
-		if (type === 'svg' && svg) return { type, position, faClass: '', svg };
-		return { type: 'none', position, faClass: '', svg: '' };
+		if (type === 'fontawesome' && faClass && hasFaIcon) return { type, position, faClass, svg: '', attachmentId: 0, mediaUrl: '' };
+		if (type === 'svg' && svg) return { type, position, faClass: '', svg, attachmentId: 0, mediaUrl: '' };
+		if (type === 'media_svg' && attachmentId > 0 && mediaUrl) return { type, position, faClass: '', svg: '', attachmentId, mediaUrl };
+		return { type: 'none', position, faClass: '', svg: '', attachmentId: 0, mediaUrl: '' };
 	}
 
 	updateButtonIconPanels() {
@@ -260,7 +307,70 @@ class LeadFormsGoAdmin {
 			wrapper.append(svg);
 			return wrapper;
 		}
+		if (icon.type === 'media_svg' && icon.mediaUrl) {
+			const wrapper = document.createElement('span');
+			wrapper.className = 'btn__icon leadforms-go-button__icon leadforms-go-button__icon--media-svg';
+			wrapper.setAttribute('aria-hidden', 'true');
+			const image = document.createElement('img');
+			image.src = icon.mediaUrl;
+			image.alt = '';
+			wrapper.append(image);
+			return wrapper;
+		}
 		return null;
+	}
+
+	selectButtonSvg() {
+		if (!window.wp?.media || !this.buttonIconMediaId) return;
+		const frame = window.wp.media({
+			title: this.config.builder.selectSvg,
+			button: { text: this.config.builder.useSvg },
+			library: { type: 'image/svg+xml' },
+			multiple: false,
+		});
+		frame.on('select', () => {
+			const attachment = frame.state().get('selection').first()?.toJSON();
+			const url = String(attachment?.url || '');
+			let isSvgUrl = false;
+			try { isSvgUrl = new URL(url, window.location.origin).pathname.toLowerCase().endsWith('.svg'); } catch { isSvgUrl = false; }
+			if (!attachment || attachment.mime !== 'image/svg+xml' || !isSvgUrl) {
+				window.alert(this.config.builder.invalidSvgFile);
+				return;
+			}
+			this.buttonIconMediaId.value = String(attachment.id || 0);
+			this.buttonIconMediaId.dataset.svgUrl = url;
+			this.renderButtonSvgSelection();
+			this.syncCodePreview();
+			this.renderPreview();
+		});
+		frame.open();
+	}
+
+	removeButtonSvg() {
+		if (!this.buttonIconMediaId) return;
+		this.buttonIconMediaId.value = '0';
+		this.buttonIconMediaId.dataset.svgUrl = '';
+		this.renderButtonSvgSelection();
+		this.syncCodePreview();
+		this.renderPreview();
+	}
+
+	renderButtonSvgSelection() {
+		if (!this.buttonIconMediaPreview || !this.buttonIconMediaId) return;
+		const url = this.buttonIconMediaId.dataset.svgUrl || '';
+		this.buttonIconMediaPreview.replaceChildren();
+		if (url) {
+			const image = document.createElement('img');
+			image.src = url;
+			image.alt = '';
+			this.buttonIconMediaPreview.append(image);
+		} else {
+			const empty = document.createElement('span');
+			empty.textContent = this.config.builder.svgNotSelected;
+			this.buttonIconMediaPreview.append(empty);
+		}
+		const remove = document.querySelector('[data-lfg-remove-button-svg]');
+		if (remove) remove.hidden = !url;
 	}
 
 	safeSvgElement(value) {
@@ -286,10 +396,21 @@ class LeadFormsGoAdmin {
 		this.preview.replaceChildren();
 		this.schema.forEach((field) => {
 			const text = this.resolvedFieldTranslation(field);
+			if (field.type === 'hidden') return;
 			const label = document.createElement('label');
 			const span = document.createElement('span'); span.textContent = `${text.label || field.key}${field.required ? '*' : ''}`;
-			const input = document.createElement(field.type === 'textarea' ? 'textarea' : 'input');
-			if (field.type !== 'textarea') input.type = field.type || 'text';
+			const input = document.createElement(field.type === 'textarea' ? 'textarea' : (field.type === 'select' ? 'select' : 'input'));
+			if (!['textarea', 'select'].includes(field.type)) input.type = field.type || 'text';
+			if (field.type === 'select') (text.options || []).forEach((option) => { const item = document.createElement('option'); item.textContent = option; input.append(item); });
+			if (field.type === 'radio') {
+				const group = document.createElement('span');
+				(text.options || field.options || []).forEach((option) => {
+					const item = document.createElement('label');
+					const radio = document.createElement('input'); radio.type = 'radio'; radio.disabled = true;
+					item.append(radio, document.createTextNode(` ${option}`)); group.append(item);
+				});
+				label.append(span, group); this.preview.append(label); return;
+			}
 			input.placeholder = text.placeholder || ''; input.disabled = true;
 			label.append(span, input); this.preview.append(label);
 		});
@@ -308,9 +429,9 @@ class LeadFormsGoAdmin {
 		document.querySelectorAll('[data-lfg-locale]').forEach((button) => {
 			const locale = button.dataset.lfgLocale;
 			const translation = this.ensureTranslation(locale);
-			const total = this.schema.length * 2 + 1;
+			const total = this.schema.filter((field) => field.type !== 'hidden').length * 2 + 1;
 			let completed = translation.submit_label ? 1 : 0;
-			this.schema.forEach((field) => { const value = translation.fields[field.key] || {}; if (value.label) completed += 1; if (value.placeholder || field.type === 'checkbox') completed += 1; });
+			this.schema.forEach((field) => { if (field.type === 'hidden') return; const value = translation.fields[field.key] || {}; if (value.label) completed += 1; if (value.placeholder || ['checkbox', 'radio'].includes(field.type)) completed += 1; });
 			button.classList.toggle('is-active', locale === this.currentLocale);
 			button.setAttribute('aria-selected', String(locale === this.currentLocale));
 			const progress = button.querySelector('[data-lfg-locale-progress]');
@@ -346,6 +467,7 @@ class LeadFormsGoAdmin {
 			['label', this.config.builder.fieldLabel, this.config.builder.fieldLabelHelp],
 			['placeholder', this.config.builder.placeholder, this.config.builder.placeholderHelp],
 		].forEach(([property, labelText, helpText]) => {
+			if (field.type === 'hidden' && property !== 'label') return;
 			const label = document.createElement('label');
 			const span = document.createElement('strong'); span.textContent = labelText;
 			const help = document.createElement('small'); help.textContent = helpText;
@@ -353,6 +475,29 @@ class LeadFormsGoAdmin {
 			input.addEventListener('input', () => { this.fieldTranslation(field)[property] = input.value; if (property === 'label') title.textContent = input.value || field.key; this.syncTranslations(); this.syncCodePreview(); this.renderPreview(); this.updateLocaleProgress(); });
 			label.append(span, help, input); fields.append(label);
 		});
+		if (['select', 'radio'].includes(field.type)) {
+			const optionsLabel = document.createElement('label');
+			const title = document.createElement('strong'); title.textContent = this.config.builder.options;
+			const help = document.createElement('small'); help.textContent = this.config.builder.optionsHelp;
+			const options = document.createElement('textarea'); options.rows = 4; options.value = (fieldText.options?.length ? fieldText.options : (field.options || [])).join('\n');
+			options.addEventListener('input', () => {
+				const labels = options.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 50);
+				this.fieldTranslation(field).options = labels;
+				if (this.currentLocale === (this.defaultLocaleInput?.value || 'uk_UA')) {
+					const used = new Set();
+					field.options = labels.map((value, optionIndex) => { let key = value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `option_${optionIndex + 1}`; while (used.has(key)) key = `${key}_${optionIndex + 1}`; used.add(key); return key; });
+				}
+				this.syncTranslations(); this.syncSchema(); this.syncCodePreview(); this.renderPreview();
+			});
+			optionsLabel.append(title, help, options); fields.append(optionsLabel);
+		}
+		if (field.type === 'hidden') {
+			const valueLabel = document.createElement('label');
+			const title = document.createElement('strong'); title.textContent = this.config.builder.defaultValue;
+			const input = document.createElement('input'); input.type = 'text'; input.value = field.default_value || '';
+			input.addEventListener('input', () => { field.default_value = input.value; this.syncSchema(); this.syncCodePreview(); });
+			valueLabel.append(title, input); fields.append(valueLabel);
+		}
 		const keyLabel = document.createElement('label');
 		const keyTitle = document.createElement('strong'); keyTitle.textContent = this.config.builder.fieldName;
 		const keyHelp = document.createElement('small'); keyHelp.textContent = this.config.builder.fieldNameHelp;
@@ -363,9 +508,28 @@ class LeadFormsGoAdmin {
 		const required = document.createElement('input'); required.type = 'checkbox'; required.checked = Boolean(field.required);
 		required.addEventListener('change', () => { field.required = required.checked; this.syncSchema(); this.syncCodePreview(); });
 		requiredLabel.append(required, document.createTextNode(` ${this.config.builder.required}`));
-		body.append(fields, requiredLabel);
+		if (field.type !== 'hidden') body.append(fields, requiredLabel);
+		else body.append(fields);
+		if (field.type !== 'hidden') body.append(this.conditionSettings(field));
 		card.append(header, body);
 		return card;
+	}
+
+	conditionSettings(field) {
+		const details = document.createElement('details'); details.className = 'lfg-condition-settings';
+		const summary = document.createElement('summary'); summary.textContent = this.config.builder.condition;
+		const grid = document.createElement('div'); grid.className = 'lfg-builder-field__settings';
+		const source = document.createElement('select');
+		source.append(new Option(this.config.builder.conditionDisabled, ''));
+		this.schema.filter((candidate) => candidate.key !== field.key && candidate.type !== 'hidden').forEach((candidate) => source.append(new Option(this.resolvedFieldTranslation(candidate).label || candidate.key, candidate.key)));
+		source.value = field.condition?.field || '';
+		const operator = document.createElement('select');
+		Object.entries(this.config.builder.conditionOperators || {}).forEach(([value, label]) => operator.append(new Option(label, value)));
+		operator.value = field.condition?.operator || 'equals';
+		const value = document.createElement('input'); value.type = 'text'; value.value = field.condition?.value || ''; value.placeholder = this.config.builder.conditionValue;
+		const sync = () => { field.condition = source.value ? { field: source.value, operator: operator.value, value: value.value } : {}; this.syncSchema(); this.syncCodePreview(); };
+		[source, operator, value].forEach((input) => input.addEventListener('input', sync));
+		grid.append(source, operator, value); details.append(summary, grid); return details;
 	}
 
 	toggleField(button) {
@@ -397,6 +561,9 @@ class LeadFormsGoAdmin {
 		if (icon.type === 'svg' && icon.svg) {
 			return `    <span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--svg" aria-hidden="true">${icon.svg}</span>`;
 		}
+		if (icon.type === 'media_svg' && icon.mediaUrl) {
+			return `    <span class="btn__icon leadforms-go-button__icon leadforms-go-button__icon--media-svg" aria-hidden="true"><img src="${escape(icon.mediaUrl)}" alt="" decoding="async"></span>`;
+		}
 		return '';
 	}
 
@@ -411,21 +578,39 @@ class LeadFormsGoAdmin {
 			const id = `lfg-${base}${counts[base] > 1 ? `-${counts[base]}` : ''}`;
 			const required = field.required ? ' required' : '';
 			const mark = field.required ? '*' : '';
-			if (field.type === 'checkbox') {
-				lines.push(`  <label class="leadforms-go-checkbox" for="${id}">`);
-				lines.push(`    <input id="${id}" type="checkbox" name="${escape(field.key)}" value="1"${required}>`);
-				lines.push(`    <span class="leadforms-go-checkbox__label">${escape(text.label)}${mark}</span>`);
-				lines.push('  </label>');
+			if (field.type === 'hidden') {
+				lines.push(`  <input id="${id}" type="hidden" name="${escape(field.key)}" value="${escape(field.default_value || '')}">`);
 				return;
 			}
-			lines.push(`  <label for="${id}">`);
-			lines.push(`    <span>${escape(text.label)}${mark}</span>`);
-			if (field.type === 'textarea') lines.push(`    <textarea id="${id}" name="${escape(field.key)}" placeholder="${escape(text.placeholder)}"${required}></textarea>`);
+			const condition = field.condition?.field ? ` lfg-condition--${encodeURIComponent(JSON.stringify({ field: field.condition.field, operator: field.condition.operator || 'equals', value: field.condition.value || '' }))}` : '';
+			lines.push(`  <div class="leadforms-go-field${condition}">`);
+			if (field.type === 'checkbox') {
+				lines.push(`    <label class="leadforms-go-checkbox" for="${id}">`);
+				lines.push(`      <input id="${id}" type="checkbox" name="${escape(field.key)}" value="1"${required}>`);
+				lines.push(`      <span class="leadforms-go-checkbox__label">${escape(text.label)}${mark}</span>`);
+				lines.push('    </label>');
+				lines.push('  </div>');
+				return;
+			}
+			if (field.type === 'radio') {
+				lines.push(`    <span class="leadforms-go-radio__legend">${escape(text.label)}${mark}</span>`);
+				(field.options || []).forEach((option, index) => lines.push(`      <label><input type="radio" name="${escape(field.key)}" value="${escape(option)}"${index === 0 ? required : ''}> <span>${escape(text.options?.[index] || option)}</span></label>`));
+				lines.push('  </div>'); return;
+			}
+			lines.push(`    <label for="${id}">`);
+			lines.push(`      <span>${escape(text.label)}${mark}</span>`);
+			if (field.type === 'textarea') lines.push(`      <textarea id="${id}" name="${escape(field.key)}" placeholder="${escape(text.placeholder)}"${required}></textarea>`);
+			else if (field.type === 'select') {
+				lines.push(`      <select id="${id}" name="${escape(field.key)}"${required}>`);
+				lines.push(`        <option value="">${escape(text.placeholder)}</option>`);
+				(field.options || []).forEach((option, index) => lines.push(`        <option value="${escape(option)}">${escape(text.options?.[index] || option)}</option>`));
+				lines.push('      </select>');
+			}
 			else {
 				const mask = field.type === 'tel' && field.mask ? ` data-leadforms-go-mask="${escape(field.mask)}" data-min-length="12"` : '';
-				lines.push(`    <input id="${id}" type="${escape(field.type)}" name="${escape(field.key)}" placeholder="${escape(text.placeholder)}"${mask}${required}>`);
+				lines.push(`      <input id="${id}" type="${escape(field.type)}" name="${escape(field.key)}" placeholder="${escape(text.placeholder)}"${mask}${required}>`);
 			}
-			lines.push('  </label>');
+			lines.push('    </label>'); lines.push('  </div>');
 		});
 		lines.push('  <button class="btn btn--primary" type="submit">');
 		const primary = this.ensureTranslation(this.defaultLocaleInput?.value || this.currentLocale);
@@ -505,8 +690,12 @@ class LeadFormsGoAdmin {
 				const section = button.closest('.lfg-settings');
 				['token', 'chat_id'].forEach((key) => {
 					const input = section?.querySelector(`[name="leadforms_go_settings[telegram][${key}]"]`);
-					if (input?.value) body.append(key, input.value);
+					if (input) body.append(key, input.value);
 				});
+				const enabled = section?.querySelector('[name="leadforms_go_settings[telegram][enabled]"]');
+				body.append('enabled', enabled?.checked ? '1' : '');
+				const replaceWebhook = section?.querySelector('[data-lfg-telegram-replace-webhook]');
+				body.append('replace_webhook', replaceWebhook?.checked ? '1' : '');
 			}
 			const response = await fetch(this.config.ajaxUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body, signal: controller.signal });
 			const result = await response.json();

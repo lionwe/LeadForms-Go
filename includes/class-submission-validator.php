@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Submission_Validator
 {
-	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ttclid', 'landing_page', 'document_referrer', 'visited_at'];
 	private const MAX_PAYLOAD_FIELDS = 50;
 	private const MAX_PAYLOAD_KEY_LENGTH = 190;
 	private const MAX_PAYLOAD_VALUE_LENGTH = 1000;
@@ -66,6 +66,12 @@ final class Submission_Validator
 		$errors = [];
 		foreach ($schema as $field) {
 			$name = (string) $field['key'];
+			if (! self::condition_matches((array) ($field['condition'] ?? []), $submitted)) continue;
+			if (($field['type'] ?? '') === 'hidden') {
+				$value = sanitize_text_field((string) ($field['default_value'] ?? ''));
+				if ($value !== '') $data[$name] = $value;
+				continue;
+			}
 			$value = isset($submitted[$name]) && is_scalar($submitted[$name]) ? trim((string) $submitted[$name]) : '';
 			if (($field['type'] ?? '') === 'checkbox') {
 				if (! self::is_checked($value)) {
@@ -76,6 +82,10 @@ final class Submission_Validator
 			}
 			if ($value === '') {
 				if (! empty($field['required'])) $errors[$name] = (string) ($messages['required'] ?? __('Заповніть це поле.', 'leadforms-go'));
+				continue;
+			}
+			if (in_array($field['type'] ?? '', ['select', 'radio'], true) && ! in_array($value, (array) ($field['options'] ?? []), true)) {
+				$errors[$name] = (string) ($messages['invalid'] ?? __('Перевірте правильність значення.', 'leadforms-go'));
 				continue;
 			}
 			$error = self::value_error($value, (string) $field['type'], null, $messages);
@@ -161,6 +171,20 @@ final class Submission_Validator
 		}
 	}
 
+	private static function condition_matches(array $condition, array $submitted): bool
+	{
+		if ($condition === []) return true;
+		$field = sanitize_key((string) ($condition['field'] ?? ''));
+		$current = isset($submitted[$field]) && is_scalar($submitted[$field]) ? trim((string) $submitted[$field]) : '';
+		$expected = (string) ($condition['value'] ?? '');
+		return match ($condition['operator'] ?? 'equals') {
+			'not_equals' => $current !== $expected,
+			'contains' => $expected !== '' && str_contains($current, $expected),
+			'filled' => $current !== '',
+			default => $current === $expected,
+		};
+	}
+
 	private static function is_checked(string $value): bool
 	{
 		return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
@@ -178,7 +202,21 @@ final class Submission_Validator
 		if (preg_match('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}\x{200D}]/u', $value) === 1) return (string) ($messages['emoji'] ?? __('Смайлики використовувати не можна.', 'leadforms-go'));
 		if ($type === 'tel') {
 			$digits = (string) preg_replace('/\D+/', '', $value);
-			if (strlen($digits) < 12 || ! str_starts_with($digits, '380')) return sprintf((string) ($messages['phone'] ?? __('Введіть коректний номер телефону — мінімум %d цифр.', 'leadforms-go')), 12);
+			$phone = Settings::phone_configuration();
+			$countries = $phone['enabled'] ? $phone['countries'] : [$phone['default'] => $phone['countries'][$phone['default']]];
+			uasort($countries, static fn (array $first, array $second): int => strlen($second['dial']) <=> strlen($first['dial']));
+			$matched = null;
+			foreach ($countries as $country) {
+				if (str_starts_with($digits, $country['dial'])) {
+					$matched = $country;
+					break;
+				}
+			}
+			$minimum = $matched ? strlen($matched['dial']) + $matched['min'] : 7;
+			$maximum_phone = $matched ? strlen($matched['dial']) + $matched['max'] : 15;
+			if ($matched === null || strlen($digits) < $minimum || strlen($digits) > $maximum_phone) {
+				return sprintf((string) ($messages['phone'] ?? __('Введіть коректний номер телефону — мінімум %d цифр.', 'leadforms-go')), $minimum);
+			}
 		}
 		if ($type === 'email' && ! is_email($value)) return (string) ($messages['email'] ?? __('Введіть коректну електронну адресу.', 'leadforms-go'));
 		return '';

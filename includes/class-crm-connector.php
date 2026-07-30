@@ -14,7 +14,11 @@ final class Crm_Connector extends Abstract_Connector implements Contextual_Conne
 		return ! empty($s['partner_id']) && ! empty($s['token']) ? true : new \WP_Error('missing_settings', __('Потрібні ID партнера та токен CRM.', 'leadforms-go'));
 	}
 
-	public function validate_route(array $route): true|\WP_Error { return $this->validate_settings(); }
+	public function validate_route(array $route): true|\WP_Error
+	{
+		$s = $this->resolved_settings($route);
+		return $s['partner_id'] !== '' && $s['token'] !== '' ? true : new \WP_Error('missing_settings', __('Потрібні ID партнера та токен CRM.', 'leadforms-go'));
+	}
 
 	public function test_connection(): Result
 	{
@@ -34,9 +38,9 @@ final class Crm_Connector extends Abstract_Connector implements Contextual_Conne
 
 	public function send_request(Delivery_Request $request): Result
 	{
-		$valid = $this->validate_settings();
+		$valid = $this->validate_route($request->route);
 		if (is_wp_error($valid)) return new Result(false, 0, $valid->get_error_message(), false);
-		$s = $this->settings();
+		$s = $this->resolved_settings($request->route);
 		$variables = $request->variables();
 		$mapping = is_array($request->route['mapping'] ?? null) ? $request->route['mapping'] : [];
 		if ($mapping !== []) {
@@ -55,11 +59,22 @@ final class Crm_Connector extends Abstract_Connector implements Contextual_Conne
 			else $notes[] = sanitize_text_field((string) $key) . ': ' . sanitize_textarea_field((string) $value);
 		}
 		if ($request->referer !== '') $notes[] = __('Джерело:', 'leadforms-go') . ' ' . sanitize_url($request->referer);
-		$adv_id = sanitize_text_field((string) (($request->route['adv_id'] ?? '') !== '' ? $request->route['adv_id'] : ($s['adv_id'] ?? '')));
+		$adv_id = sanitize_text_field((string) (! empty($request->route['profile_id']) ? ($s['adv_id'] ?? '') : (($request->route['adv_id'] ?? '') !== '' ? $request->route['adv_id'] : ($s['adv_id'] ?? ''))));
 		$body = ['action' => 'partner-custom-form', 'partner_id' => $s['partner_id'], 'token' => $s['token'], 'adv_id' => $adv_id, 'name' => implode(' ', array_filter($name_parts)), 'phone' => $phone, 'note' => implode("\n", $notes)];
 		$response = wp_remote_post('https://crm.g-plus.app/api/actions', $this->request_args(['body' => $body]));
 		$response_body = is_wp_error($response) ? [] : json_decode(wp_remote_retrieve_body($response), true);
 		$external_id = is_array($response_body) ? sanitize_text_field((string) ($response_body['lead_id'] ?? $response_body['id'] ?? $response_body['data']['id'] ?? '')) : '';
 		return $this->result($response, $external_id !== '' ? 'lead:' . $external_id : '');
+	}
+
+	private function resolved_settings(array $route): array
+	{
+		$global = $this->settings();
+		$profile = ! empty($route['profile_id']) ? Connection_Profiles::find((string) $route['profile_id'], 'crm') : null;
+		return [
+			'partner_id' => sanitize_text_field((string) (($profile['partner_id'] ?? '') ?: ($global['partner_id'] ?? ''))),
+			'token' => sanitize_text_field((string) (($profile['token'] ?? '') ?: ($global['token'] ?? ''))),
+			'adv_id' => sanitize_text_field((string) (($profile['adv_id'] ?? '') ?: ($global['adv_id'] ?? ''))),
+		];
 	}
 }

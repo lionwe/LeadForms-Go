@@ -16,7 +16,7 @@ final class Delivery_Repository
 		$snapshot = wp_json_encode($route_snapshot, JSON_UNESCAPED_UNICODE);
 		if (! is_string($snapshot)) $snapshot = '{}';
 		$inserted = $wpdb->query($wpdb->prepare(
-			"INSERT IGNORE INTO {$table} (submission_id, connector, status, attempts, retryable, next_attempt_at, idempotency_key, route_snapshot, created_at, updated_at) VALUES (%d, %s, 'queued', 0, 1, %s, %s, %s, %s, %s)",
+			"INSERT IGNORE INTO {$table} (submission_id, connector, status, attempts, retryable, next_attempt_at, idempotency_key, route_snapshot, external_meta, created_at, updated_at) VALUES (%d, %s, 'queued', 0, 1, %s, %s, %s, '{}', %s, %s)",
 			$submission_id,
 			$connector,
 			$now,

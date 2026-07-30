@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.6.0';
+	private const SCHEMA_VERSION = '1.8.0';
 	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
 	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
 
@@ -19,6 +19,7 @@ final class Database
 			'deliveries' => $wpdb->prefix . 'leadforms_go_deliveries',
 			'attempts' => $wpdb->prefix . 'leadforms_go_delivery_attempts',
 			'rate_limits' => $wpdb->prefix . 'leadforms_go_rate_limits',
+			'views' => $wpdb->prefix . 'leadforms_go_views',
 		];
 	}
 
@@ -64,6 +65,9 @@ final class Database
 			translations longtext NOT NULL,
 			routing_config longtext NOT NULL,
 			routing_version int(10) unsigned NOT NULL DEFAULT 1,
+			success_action varchar(20) NOT NULL DEFAULT 'message',
+			success_redirect_url text NOT NULL,
+			success_duration smallint(5) unsigned NOT NULL DEFAULT 4,
 			active tinyint(1) unsigned NOT NULL DEFAULT 1,
 			legacy_id bigint(20) unsigned DEFAULT NULL,
 			created_at datetime NOT NULL,
@@ -80,7 +84,25 @@ final class Database
 			locale varchar(20) NOT NULL DEFAULT 'uk_UA',
 			request_id varchar(64) DEFAULT NULL,
 			is_test tinyint(1) unsigned NOT NULL DEFAULT 0,
+			landing_page text NOT NULL,
+			document_referrer text NOT NULL,
+			utm_source varchar(255) NOT NULL DEFAULT '',
+			utm_medium varchar(255) NOT NULL DEFAULT '',
+			utm_campaign varchar(255) NOT NULL DEFAULT '',
+			utm_term varchar(255) NOT NULL DEFAULT '',
+			utm_content varchar(255) NOT NULL DEFAULT '',
+			gclid varchar(255) NOT NULL DEFAULT '',
+			fbclid varchar(255) NOT NULL DEFAULT '',
+			ttclid varchar(255) NOT NULL DEFAULT '',
+			visited_at datetime DEFAULT NULL,
 			status varchar(20) NOT NULL DEFAULT 'pending',
+			lead_state varchar(20) NOT NULL DEFAULT 'new',
+			phone_fingerprint char(64) NOT NULL DEFAULT '',
+			email_fingerprint char(64) NOT NULL DEFAULT '',
+			duplicate_of bigint(20) unsigned DEFAULT NULL,
+			dedup_indexed tinyint(1) unsigned NOT NULL DEFAULT 0,
+			acknowledged_at datetime DEFAULT NULL,
+			spam_at datetime DEFAULT NULL,
 			created_at datetime NOT NULL,
 			PRIMARY KEY  (id),
 			UNIQUE KEY legacy_id (legacy_id),
@@ -88,6 +110,11 @@ final class Database
 			KEY locale (locale),
 			UNIQUE KEY request_id (request_id),
 			KEY status_created (status,created_at),
+			KEY lead_state_created (lead_state,created_at),
+			KEY phone_fingerprint (phone_fingerprint),
+			KEY email_fingerprint (email_fingerprint),
+			KEY duplicate_of (duplicate_of),
+			KEY dedup_indexed (dedup_indexed),
 			KEY created_at (created_at)
 		) $collate;");
 		dbDelta("CREATE TABLE {$tables['deliveries']} (
@@ -104,6 +131,8 @@ final class Database
 			idempotency_key varchar(64) NOT NULL DEFAULT '',
 			route_snapshot longtext NOT NULL,
 			external_reference varchar(255) NOT NULL DEFAULT '',
+			external_meta longtext NOT NULL,
+			telegram_reminder_sent_at datetime DEFAULT NULL,
 			created_at datetime NOT NULL,
 			updated_at datetime NOT NULL,
 			PRIMARY KEY  (id),
@@ -131,9 +160,20 @@ final class Database
 			PRIMARY KEY  (key_hash),
 			KEY expires_at (expires_at)
 		) $collate;");
+		dbDelta("CREATE TABLE {$tables['views']} (
+			view_date date NOT NULL,
+			form_id bigint(20) unsigned NOT NULL,
+			utm_source varchar(191) NOT NULL DEFAULT '',
+			utm_campaign varchar(191) NOT NULL DEFAULT '',
+			views bigint(20) unsigned NOT NULL DEFAULT 0,
+			PRIMARY KEY  (view_date,form_id,utm_source,utm_campaign),
+			KEY form_date (form_id,view_date)
+		) $collate;");
 		self::migrate_form_translations();
 		self::grant_capabilities();
 		update_option('leadforms_go_schema_version', self::SCHEMA_VERSION, false);
+		delete_option('leadforms_go_dedup_backfill_complete');
+		Lead_Deduplicator::schedule_backfill();
 		$queued = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$tables['deliveries']} WHERE status = 'queued'"); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		if ($queued > 0) update_option('leadforms_go_queue_pending', 1, false);
 		else delete_option('leadforms_go_queue_pending');

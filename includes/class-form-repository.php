@@ -33,7 +33,7 @@ final class Form_Repository
 	{
 		global $wpdb;
 		$table = Database::tables()['forms'];
-		$formats = ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%s'];
+		$formats = ['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s'];
 		if ($id > 0) {
 			$result = $wpdb->update($table, $data, ['id' => $id], $formats, ['%d']);
 			return $result === false ? false : $id;
