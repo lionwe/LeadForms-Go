@@ -60,10 +60,15 @@ final class Telegram_Interactions
 
 	public static function action_buttons(int $delivery_id, string $token): array
 	{
-		return [[
-			['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
-			['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token), 'style' => 'danger'],
-		]];
+		return [
+			[
+				['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
+				['text' => __('Не підійшла', 'leadforms-go'), 'callback_data' => self::callback_data('r', $delivery_id, $token), 'style' => 'primary'],
+			],
+			[
+				['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token), 'style' => 'danger'],
+			],
+		];
 	}
 
 	public static function utility_buttons(string $phone, string $source_url): array
@@ -130,7 +135,7 @@ final class Telegram_Interactions
 		$callback_id = sanitize_text_field((string) ($callback['id'] ?? ''));
 		$data = sanitize_text_field((string) ($callback['data'] ?? ''));
 		if ($callback_id === '') return new \WP_REST_Response(['ok' => true], 200);
-		if (! preg_match('/^lfg:([ascx]):(\d+):([a-f0-9]{12})$/', $data, $match)) {
+		if (! preg_match('/^lfg:([acdrsx]):(\d+):([a-f0-9]{12})$/', $data, $match)) {
 			self::answer($token, $callback_id, __('Некоректна дія.', 'leadforms-go'), true);
 			return new \WP_REST_Response(['ok' => true], 200);
 		}
@@ -162,17 +167,29 @@ final class Telegram_Interactions
 			]];
 			self::edit_keyboard($token, $chat_id, $message_id, array_merge($custom, $confirm));
 			self::answer($token, $callback_id, __('Підтвердьте позначення як спам.', 'leadforms-go'));
+		} elseif ($action === 'r') {
+			$confirm = [[
+				['text' => __('Підтвердити: не підійшла', 'leadforms-go'), 'callback_data' => self::callback_data('d', $delivery_id, $token), 'style' => 'primary'],
+				['text' => __('Скасувати', 'leadforms-go'), 'callback_data' => self::callback_data('x', $delivery_id, $token)],
+			]];
+			self::edit_keyboard($token, $chat_id, $message_id, array_merge($custom, $confirm));
+			self::answer($token, $callback_id, __('Підтвердьте, що заявка не підійшла.', 'leadforms-go'));
 		} elseif ($action === 'x') {
 			self::edit_keyboard($token, $chat_id, $message_id, array_merge($custom, self::action_buttons($delivery_id, $token)));
 			self::answer($token, $callback_id, __('Скасовано.', 'leadforms-go'));
 		} elseif ($action === 'a') {
 			if (($submission['lead_state'] ?? 'new') === 'spam') self::answer($token, $callback_id, __('Заявку вже позначено як спам.', 'leadforms-go'), true);
+			elseif (($submission['lead_state'] ?? 'new') === 'rejected') self::answer($token, $callback_id, __('Заявка вже позначена як така, що не підійшла.', 'leadforms-go'), true);
 			elseif (($submission['lead_state'] ?? 'new') === 'acknowledged') self::answer($token, $callback_id, __('Заявку вже взято в роботу.', 'leadforms-go'));
 			else {
 				Repositories::set_lead_state((int) $submission['id'], 'acknowledged');
 				self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'acknowledged', self::responsible($callback), $custom);
 				self::answer($token, $callback_id, __('Заявку взято в роботу.', 'leadforms-go'));
 			}
+		} elseif ($action === 'd') {
+			if (($submission['lead_state'] ?? 'new') !== 'rejected') Repositories::set_lead_state((int) $submission['id'], 'rejected');
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'rejected', '', $custom);
+			self::answer($token, $callback_id, __('Заявку позначено як таку, що не підійшла.', 'leadforms-go'));
 		} elseif ($action === 'c') {
 			if (($submission['lead_state'] ?? 'new') !== 'spam') Repositories::set_lead_state((int) $submission['id'], 'spam');
 			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'spam', '', $custom);

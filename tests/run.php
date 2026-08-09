@@ -107,10 +107,12 @@ $no_contacts = Lead_Deduplicator::contact_values(['message' => 'Call me tomorrow
 $assert($no_contacts === ['phone' => '', 'email' => ''], 'Payloads without contact fields must remain unique.');
 $interactive_config = Route_Config::sanitize(['telegram' => ['interactive' => true]], $schema);
 $assert($interactive_config['telegram']['interactive'] === true, 'Interactive Telegram mode must survive route sanitization.');
+$assert(Route_Config::sanitize([], $schema)['telegram']['interactive'] === true, 'Interactive Telegram mode must be enabled for routes that do not define it.');
+$assert(Route_Config::sanitize(['telegram' => ['interactive' => false]], $schema)['telegram']['interactive'] === false, 'Interactive Telegram mode must support an explicit opt-out.');
 $buttons = Telegram_Interactions::action_buttons(42, '123456:test-token');
-$assert(count($buttons) === 1 && count($buttons[0]) === 2, 'Telegram interaction must expose exactly two primary actions.');
+$assert(count($buttons) === 2 && count($buttons[0]) === 2 && count($buttons[1]) === 1, 'Telegram interaction must expose work, rejection, and spam actions.');
 $assert(strlen($buttons[0][0]['callback_data']) <= 64, 'Telegram callback data must fit the Bot API limit.');
-$assert(($buttons[0][0]['style'] ?? '') === 'success' && ($buttons[0][1]['style'] ?? '') === 'danger', 'Telegram action buttons must expose semantic styles.');
+$assert(($buttons[0][0]['style'] ?? '') === 'success' && ($buttons[0][1]['style'] ?? '') === 'primary' && ($buttons[1][0]['style'] ?? '') === 'danger', 'Telegram action buttons must expose semantic styles.');
 
 $minimal_fields = [
 	['key' => 'first_name', 'label' => 'Ім’я', 'type' => 'text', 'value' => 'Оксана', 'raw_value' => 'Оксана'],
@@ -135,7 +137,8 @@ $full_message = Telegram_Message_Formatter::format($full_fields, [
 	'source_url' => $source_url,
 	'attribution' => ['utm_source' => 'ig', 'utm_medium' => 'paid', 'utm_campaign' => '120250174665870267', 'utm_term' => 'set-1', 'utm_content' => 'ad-1', 'utm_id' => 'campaign-1'],
 ]);
-$assert(str_contains($full_message, 'Ім’я: <b>Оксана Рад</b>') && str_contains($full_message, 'Email: oksana@example.com'), 'Full Telegram messages must combine and label the name and render email separately.');
+$assert(str_contains($full_message, 'Ім’я: <b>Оксана</b>') && str_contains($full_message, 'Прізвище: <b>Рад</b>') && ! str_contains($full_message, '<b>Оксана Рад</b>'), 'Full Telegram messages must render first and last names as separate fields.');
+$assert(str_contains($full_message, 'Email: oksana@example.com'), 'Full Telegram messages must render email separately.');
 $assert(str_contains($full_message, '<b>Деталі звернення</b>') && str_contains($full_message, 'Послуга: Консультація флеболога'), 'Full Telegram messages must render dynamic inquiry details.');
 $assert(str_contains($full_message, '<blockquote>Після 16:00</blockquote>'), 'Comments must be rendered as a separate quote block.');
 $assert(str_contains($full_message, 'Instagram · платна реклама') && str_contains($full_message, '<blockquote expandable>'), 'Advertising submissions must render a normalized source and expandable raw UTM data.');
@@ -154,6 +157,8 @@ $repeat = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_U
 $assert(str_contains($repeat, '<i>Повторне звернення · 3 заявки</i>'), 'Repeat submissions must be identified below the title.');
 $acknowledged = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'acknowledged', 'responsible' => '@manager']);
 $assert(str_contains($acknowledged, '<b>Заявка в роботі</b>') && str_contains($acknowledged, '<b>Відповідальний:</b> @manager'), 'Acknowledged submissions must expose status and assignee in the original message.');
+$rejected = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'rejected']);
+$assert(str_contains($rejected, '<b>Заявка не підійшла</b>'), 'Rejected submissions must update the original message title.');
 $spam = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'spam']);
 $assert(str_contains($spam, '<b>Заявку позначено як спам</b>'), 'Spam submissions must update the original message title.');
 $without_phone = Telegram_Message_Formatter::format([

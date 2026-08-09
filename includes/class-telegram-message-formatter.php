@@ -34,7 +34,7 @@ final class Telegram_Message_Formatter
 		$source_label = self::source_label($attribution, $referrer, $source_url, $english);
 		$direct_source = self::is_direct_source($attribution, $referrer, $source_url);
 		$state = (string) ($context['state'] ?? 'new');
-		if (! in_array($state, ['new', 'acknowledged', 'spam'], true)) $state = 'new';
+		if (! in_array($state, ['new', 'acknowledged', 'rejected', 'spam'], true)) $state = 'new';
 		$repeat_count = max(0, (int) ($context['repeat_count'] ?? 0));
 		$responsible = self::is_empty($context['responsible'] ?? '') ? '' : self::clean_value($context['responsible'] ?? '', 250);
 		$comment_limit = 1800;
@@ -113,7 +113,7 @@ final class Telegram_Message_Formatter
 			$label = self::clean_value($field['label'] ?? '', 120);
 			if ($label === '') $label = ucfirst(trim(str_replace(['_', '-'], ' ', $key)));
 			if (self::is_name($field)) {
-				$data['names'][] = self::clean_value($value, 250);
+				$data['names'][] = ['label' => $label, 'value' => self::clean_value($value, 250)];
 			} elseif (self::is_phone($field) && $data['phone'] === '') {
 				$data['phone'] = self::clean_value($value, 64);
 			} elseif (self::is_email($field) && $data['email'] === '') {
@@ -133,6 +133,7 @@ final class Telegram_Message_Formatter
 	{
 		$title = match ($state) {
 			'acknowledged' => $labels['working_title'],
+			'rejected' => $labels['rejected_title'],
 			'spam' => $labels['spam_title'],
 			default => $labels['new_title'],
 		};
@@ -146,9 +147,10 @@ final class Telegram_Message_Formatter
 		}
 
 		$contact = [];
-		$name = trim(implode(' ', array_filter($data['names'])));
-		if ($name !== '') $contact[] = self::escape($labels['name']) . ': <b>' . self::escape($name) . '</b>';
-		elseif ($data['phone'] !== '' || $data['email'] !== '' || $data['channels'] !== []) $contact[] = '<b>' . self::escape($labels['contacts']) . '</b>';
+		foreach ($data['names'] as $name) {
+			$contact[] = self::escape($name['label']) . ': <b>' . self::escape($name['value']) . '</b>';
+		}
+		if ($data['names'] === [] && ($data['phone'] !== '' || $data['email'] !== '' || $data['channels'] !== [])) $contact[] = '<b>' . self::escape($labels['contacts']) . '</b>';
 		if ($data['phone'] !== '') $contact[] = self::escape($labels['phone']) . ': <code>' . self::escape($data['phone']) . '</code>';
 		if ($data['email'] !== '') $contact[] = 'Email: ' . self::escape($data['email']);
 		foreach ($data['channels'] as $channel) $contact[] = self::escape($channel['label']) . ': ' . self::escape($channel['value']);
@@ -185,13 +187,13 @@ final class Telegram_Message_Formatter
 	private static function labels(bool $english): array
 	{
 		return $english ? [
-			'new_title' => 'New submission', 'working_title' => 'Submission in progress', 'spam_title' => 'Submission marked as spam',
+			'new_title' => 'New submission', 'working_title' => 'Submission in progress', 'rejected_title' => 'Submission was not suitable', 'spam_title' => 'Submission marked as spam',
 			'repeat_one' => 'Repeat inquiry · %d submission', 'repeat_few' => 'Repeat inquiry · %d submissions', 'repeat_many' => 'Repeat inquiry · %d submissions',
 			'status' => 'Status', 'in_progress' => 'in progress', 'responsible' => 'Assigned to',
 			'contacts' => 'Contact details', 'name' => 'Name', 'phone' => 'Phone number', 'details' => 'Inquiry details', 'form' => 'Form', 'comment' => 'Comment',
 			'source' => 'Source', 'open_page' => 'Open page', 'campaign' => 'Advertising campaign data',
 		] : [
-			'new_title' => 'Нова заявка', 'working_title' => 'Заявка в роботі', 'spam_title' => 'Заявку позначено як спам',
+			'new_title' => 'Нова заявка', 'working_title' => 'Заявка в роботі', 'rejected_title' => 'Заявка не підійшла', 'spam_title' => 'Заявку позначено як спам',
 			'repeat_one' => 'Повторне звернення · %d заявка', 'repeat_few' => 'Повторне звернення · %d заявки', 'repeat_many' => 'Повторне звернення · %d заявок',
 			'status' => 'Статус', 'in_progress' => 'у роботі', 'responsible' => 'Відповідальний',
 			'contacts' => 'Контактні дані', 'name' => 'Ім’я', 'phone' => 'Номер телефону', 'details' => 'Деталі звернення', 'form' => 'Форма', 'comment' => 'Коментар',
