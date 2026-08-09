@@ -259,7 +259,7 @@ final class Repositories
 	public static function set_lead_state(int $submission_id, string $state, string $actor = '', string $actor_telegram_id = ''): bool
 	{
 		global $wpdb;
-		if (! in_array($state, ['new', 'acknowledged', 'rejected', 'spam'], true)) return false;
+		if (! in_array($state, ['new', 'acknowledged', 'follow_up', 'completed', 'rejected', 'spam'], true)) return false;
 		$table = Database::tables()['submissions'];
 		$data = [
 			'lead_state' => $state,
@@ -482,7 +482,7 @@ final class Repositories
 		if (! empty($filters['exclude_test'])) $conditions[] = 's.is_test = 0';
 		if (! empty($filters['form_id'])) { $conditions[] = 's.form_id = %d'; $args[] = absint($filters['form_id']); }
 		if (! empty($filters['status']) && in_array($filters['status'], ['queued', 'processing', 'success', 'failed'], true)) { $conditions[] = 's.status = %s'; $args[] = $filters['status']; }
-		if (! empty($filters['lead_state']) && in_array($filters['lead_state'], ['new', 'acknowledged', 'rejected', 'spam'], true)) { $conditions[] = 's.lead_state = %s'; $args[] = $filters['lead_state']; }
+		if (! empty($filters['lead_state']) && in_array($filters['lead_state'], ['new', 'acknowledged', 'follow_up', 'completed', 'rejected', 'spam'], true)) { $conditions[] = 's.lead_state = %s'; $args[] = $filters['lead_state']; }
 		if (($filters['duplicates'] ?? '') === 'repeat') $conditions[] = 's.duplicate_of IS NOT NULL';
 		elseif (($filters['duplicates'] ?? '') === 'unique') $conditions[] = 's.duplicate_of IS NULL';
 		if (! empty($filters['connector'])) { $tables = Database::tables(); $key = sanitize_key($filters['connector']); $conditions[] = "EXISTS (SELECT 1 FROM {$tables['deliveries']} df WHERE df.submission_id = s.id AND (df.connector = %s OR df.connector LIKE %s))"; $args[] = $key; $args[] = $wpdb->esc_like($key . '__') . '%'; }

@@ -110,9 +110,9 @@ $assert($interactive_config['telegram']['interactive'] === true, 'Interactive Te
 $assert(Route_Config::sanitize([], $schema)['telegram']['interactive'] === true, 'Interactive Telegram mode must be enabled for routes that do not define it.');
 $assert(Route_Config::sanitize(['telegram' => ['interactive' => false]], $schema)['telegram']['interactive'] === false, 'Interactive Telegram mode must support an explicit opt-out.');
 $buttons = Telegram_Interactions::action_buttons(42, '123456:test-token');
-$assert(count($buttons) === 2 && count($buttons[0]) === 2 && count($buttons[1]) === 1, 'Telegram interaction must expose work, rejection, and spam actions.');
+$assert(count($buttons) === 2 && count($buttons[0]) === 2 && count($buttons[1]) === 2, 'Telegram interaction must expose work, callback, rejection, and spam actions.');
 $assert(strlen($buttons[0][0]['callback_data']) <= 64, 'Telegram callback data must fit the Bot API limit.');
-$assert(($buttons[0][0]['style'] ?? '') === 'success' && ($buttons[0][1]['style'] ?? '') === 'primary' && ($buttons[1][0]['style'] ?? '') === 'danger', 'Telegram action buttons must expose semantic styles.');
+$assert(($buttons[0][0]['style'] ?? '') === 'success' && ($buttons[1][0]['style'] ?? '') === 'primary' && ($buttons[1][1]['style'] ?? '') === 'danger', 'Telegram action buttons must expose semantic styles.');
 $status_button = Telegram_Interactions::status_button(42, '123456:test-token');
 $assert(count($status_button) === 1 && ($status_button[0][0]['text'] ?? '') === 'Змінити статус', 'Processed Telegram submissions must retain a status change action.');
 
@@ -159,6 +159,12 @@ $repeat = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_U
 $assert(str_contains($repeat, '<i>Повторне звернення · 3 заявки</i>'), 'Repeat submissions must be identified below the title.');
 $acknowledged = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'acknowledged', 'actor' => '@manager']);
 $assert(str_contains($acknowledged, '<b>Заявка в роботі</b>') && str_contains($acknowledged, '<b>Взяв у роботу:</b> @manager'), 'Acknowledged submissions must expose the Telegram user who took the lead.');
+$follow_up = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'follow_up', 'actor' => '@manager']);
+$assert(str_contains($follow_up, '<b>Передзвонити пізніше</b>') && str_contains($follow_up, '<b>Запланував повторний дзвінок:</b> @manager'), 'Follow-up submissions must expose the user who scheduled the callback.');
+$completed = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'completed', 'actor' => '@manager']);
+$assert(str_contains($completed, '<b>Заявку опрацьовано</b>') && str_contains($completed, '<b>Завершив роботу:</b> @manager'), 'Completed submissions must expose the user who completed the work.');
+$reset = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'new', 'actor' => '@manager']);
+$assert(str_contains($reset, '<b>Скинув статус:</b> @manager'), 'Reset submissions must explain who cleared the status.');
 $rejected = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'rejected', 'actor' => '@manager']);
 $assert(str_contains($rejected, '<b>Заявку відхилено</b>') && str_contains($rejected, '<b>Відхилив заявку:</b> @manager'), 'Rejected submissions must expose the user who rejected the lead.');
 $spam = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'spam', 'actor' => '@manager']);

@@ -63,9 +63,10 @@ final class Telegram_Interactions
 		return [
 			[
 				['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
-				['text' => __('Відхилити', 'leadforms-go'), 'callback_data' => self::callback_data('r', $delivery_id, $token), 'style' => 'primary'],
+				['text' => __('Передзвонити пізніше', 'leadforms-go'), 'callback_data' => self::callback_data('l', $delivery_id, $token)],
 			],
 			[
+				['text' => __('Відхилити', 'leadforms-go'), 'callback_data' => self::callback_data('r', $delivery_id, $token), 'style' => 'primary'],
 				['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token), 'style' => 'danger'],
 			],
 		];
@@ -142,7 +143,7 @@ final class Telegram_Interactions
 		$callback_id = sanitize_text_field((string) ($callback['id'] ?? ''));
 		$data = sanitize_text_field((string) ($callback['data'] ?? ''));
 		if ($callback_id === '') return new \WP_REST_Response(['ok' => true], 200);
-		if (! preg_match('/^lfg:([acdmnrsx]):(\d+):([a-f0-9]{12})$/', $data, $match)) {
+		if (! preg_match('/^lfg:([acdflmnrsx]):(\d+):([a-f0-9]{12})$/', $data, $match)) {
 			self::answer($token, $callback_id, __('Некоректна дія.', 'leadforms-go'), true);
 			return new \WP_REST_Response(['ok' => true], 200);
 		}
@@ -195,7 +196,15 @@ final class Telegram_Interactions
 		} elseif ($action === 'n') {
 			Repositories::set_lead_state((int) $submission['id'], 'new', $actor['label'], $actor['id']);
 			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'new', $actor['label'], array_merge($persistent, self::action_buttons($delivery_id, $token)));
-			self::answer($token, $callback_id, __('Заявку повернуто у нові.', 'leadforms-go'));
+			self::answer($token, $callback_id, __('Статус заявки скинуто.', 'leadforms-go'));
+		} elseif ($action === 'l') {
+			Repositories::set_lead_state((int) $submission['id'], 'follow_up', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'follow_up', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
+			self::answer($token, $callback_id, __('Заявку відкладено для повторного дзвінка.', 'leadforms-go'));
+		} elseif ($action === 'f') {
+			Repositories::set_lead_state((int) $submission['id'], 'completed', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'completed', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
+			self::answer($token, $callback_id, __('Роботу із заявкою завершено.', 'leadforms-go'));
 		} elseif ($action === 'd') {
 			Repositories::set_lead_state((int) $submission['id'], 'rejected', $actor['label'], $actor['id']);
 			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'rejected', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
@@ -247,8 +256,12 @@ final class Telegram_Interactions
 	{
 		return [
 			[
-				['text' => __('Новий', 'leadforms-go'), 'callback_data' => self::callback_data('n', $delivery_id, $token)],
+				['text' => __('Скинути статус', 'leadforms-go'), 'callback_data' => self::callback_data('n', $delivery_id, $token)],
 				['text' => __('У роботі', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
+			],
+			[
+				['text' => __('Передзвонити пізніше', 'leadforms-go'), 'callback_data' => self::callback_data('l', $delivery_id, $token)],
+				['text' => __('Завершити', 'leadforms-go'), 'callback_data' => self::callback_data('f', $delivery_id, $token), 'style' => 'success'],
 			],
 			[
 				['text' => __('Відхилити', 'leadforms-go'), 'callback_data' => self::callback_data('r', $delivery_id, $token), 'style' => 'primary'],

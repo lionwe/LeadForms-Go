@@ -34,7 +34,7 @@ final class Telegram_Message_Formatter
 		$source_label = self::source_label($attribution, $referrer, $source_url, $english);
 		$direct_source = self::is_direct_source($attribution, $referrer, $source_url);
 		$state = (string) ($context['state'] ?? 'new');
-		if (! in_array($state, ['new', 'acknowledged', 'rejected', 'spam'], true)) $state = 'new';
+		if (! in_array($state, ['new', 'acknowledged', 'follow_up', 'completed', 'rejected', 'spam'], true)) $state = 'new';
 		$repeat_count = max(0, (int) ($context['repeat_count'] ?? 0));
 		$actor = self::is_empty($context['actor'] ?? '') ? '' : self::clean_value($context['actor'] ?? '', 250);
 		$comment_limit = 1800;
@@ -133,6 +133,8 @@ final class Telegram_Message_Formatter
 	{
 		$title = match ($state) {
 			'acknowledged' => $labels['working_title'],
+			'follow_up' => $labels['follow_up_title'],
+			'completed' => $labels['completed_title'],
 			'rejected' => $labels['rejected_title'],
 			'spam' => $labels['spam_title'],
 			default => $labels['new_title'],
@@ -144,6 +146,8 @@ final class Telegram_Message_Formatter
 		if ($actor !== '') {
 			$actor_label = match ($state) {
 				'acknowledged' => $labels['taken_by'],
+				'follow_up' => $labels['follow_up_by'],
+				'completed' => $labels['completed_by'],
 				'rejected' => $labels['rejected_by'],
 				'spam' => $labels['spam_by'],
 				default => $labels['reopened_by'],
@@ -192,15 +196,15 @@ final class Telegram_Message_Formatter
 	private static function labels(bool $english): array
 	{
 		return $english ? [
-			'new_title' => 'New submission', 'working_title' => 'Submission in progress', 'rejected_title' => 'Submission rejected', 'spam_title' => 'Submission marked as spam',
+			'new_title' => 'New submission', 'working_title' => 'Submission in progress', 'follow_up_title' => 'Call back later', 'completed_title' => 'Submission completed', 'rejected_title' => 'Submission rejected', 'spam_title' => 'Submission marked as spam',
 			'repeat_one' => 'Repeat inquiry · %d submission', 'repeat_few' => 'Repeat inquiry · %d submissions', 'repeat_many' => 'Repeat inquiry · %d submissions',
-			'taken_by' => 'Taken by', 'rejected_by' => 'Rejected by', 'spam_by' => 'Marked as spam by', 'reopened_by' => 'Reopened by',
+			'taken_by' => 'Taken by', 'follow_up_by' => 'Callback scheduled by', 'completed_by' => 'Completed by', 'rejected_by' => 'Rejected by', 'spam_by' => 'Marked as spam by', 'reopened_by' => 'Reopened by',
 			'contacts' => 'Contact details', 'name' => 'Name', 'phone' => 'Phone number', 'details' => 'Inquiry details', 'form' => 'Form', 'comment' => 'Comment',
 			'source' => 'Source', 'open_page' => 'Open page', 'campaign' => 'Advertising campaign data',
 		] : [
-			'new_title' => 'Нова заявка', 'working_title' => 'Заявка в роботі', 'rejected_title' => 'Заявку відхилено', 'spam_title' => 'Заявку позначено як спам',
+			'new_title' => 'Нова заявка', 'working_title' => 'Заявка в роботі', 'follow_up_title' => 'Передзвонити пізніше', 'completed_title' => 'Заявку опрацьовано', 'rejected_title' => 'Заявку відхилено', 'spam_title' => 'Заявку позначено як спам',
 			'repeat_one' => 'Повторне звернення · %d заявка', 'repeat_few' => 'Повторне звернення · %d заявки', 'repeat_many' => 'Повторне звернення · %d заявок',
-			'taken_by' => 'Взяв у роботу', 'rejected_by' => 'Відхилив заявку', 'spam_by' => 'Позначив як спам', 'reopened_by' => 'Повернув у нові',
+			'taken_by' => 'Взяв у роботу', 'follow_up_by' => 'Запланував повторний дзвінок', 'completed_by' => 'Завершив роботу', 'rejected_by' => 'Відхилив заявку', 'spam_by' => 'Позначив як спам', 'reopened_by' => 'Скинув статус',
 			'contacts' => 'Контактні дані', 'name' => 'Ім’я', 'phone' => 'Номер телефону', 'details' => 'Деталі звернення', 'form' => 'Форма', 'comment' => 'Коментар',
 			'source' => 'Джерело', 'open_page' => 'Відкрити сторінку', 'campaign' => 'Дані рекламної кампанії',
 		];
