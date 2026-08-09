@@ -256,13 +256,18 @@ final class Repositories
 		return (new Delivery_Repository())->find($delivery_id);
 	}
 
-	public static function set_lead_state(int $submission_id, string $state): bool
+	public static function set_lead_state(int $submission_id, string $state, string $actor = '', string $actor_telegram_id = ''): bool
 	{
 		global $wpdb;
 		if (! in_array($state, ['new', 'acknowledged', 'rejected', 'spam'], true)) return false;
 		$table = Database::tables()['submissions'];
-		$data = ['lead_state' => $state];
-		$formats = ['%s'];
+		$data = [
+			'lead_state' => $state,
+			'status_changed_by' => substr(sanitize_text_field($actor), 0, 255),
+			'status_changed_by_telegram_id' => substr(preg_replace('/[^0-9-]/', '', $actor_telegram_id) ?: '', 0, 32),
+			'status_changed_at' => $actor !== '' ? current_time('mysql') : null,
+		];
+		$formats = ['%s', '%s', '%s', '%s'];
 		if ($state === 'acknowledged') {
 			$data['acknowledged_at'] = current_time('mysql');
 			$formats[] = '%s';

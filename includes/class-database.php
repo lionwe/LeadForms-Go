@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.8.0';
+	private const SCHEMA_VERSION = '1.8.3';
 	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
 	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
 
@@ -97,6 +97,9 @@ final class Database
 			visited_at datetime DEFAULT NULL,
 			status varchar(20) NOT NULL DEFAULT 'pending',
 			lead_state varchar(20) NOT NULL DEFAULT 'new',
+			status_changed_by varchar(255) NOT NULL DEFAULT '',
+			status_changed_by_telegram_id varchar(32) NOT NULL DEFAULT '',
+			status_changed_at datetime DEFAULT NULL,
 			phone_fingerprint char(64) NOT NULL DEFAULT '',
 			email_fingerprint char(64) NOT NULL DEFAULT '',
 			duplicate_of bigint(20) unsigned DEFAULT NULL,

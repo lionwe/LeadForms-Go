@@ -46,7 +46,7 @@ final class Submission_Presenter
 		string $form_name = '',
 		int $repeat_count = 0,
 		string $state = 'new',
-		string $responsible = ''
+		string $actor = ''
 	): string {
 		return Telegram_Message_Formatter::format(self::telegram_fields($payload, $form_id, $locale), [
 			'locale' => $locale,
@@ -56,7 +56,7 @@ final class Submission_Presenter
 			'attribution' => $payload,
 			'repeat_count' => $repeat_count,
 			'state' => $state,
-			'responsible' => $responsible,
+			'actor' => $actor,
 		]);
 	}
 

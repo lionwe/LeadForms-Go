@@ -15,7 +15,7 @@ final class Telegram_Message_Formatter
 
 	/**
 	 * @param array<int,array{key:string,label:string,type:string,value:mixed,raw_value:mixed}> $fields
-	 * @param array{locale?:string,form_name?:string,source_url?:string,document_referrer?:string,attribution?:array,repeat_count?:int,state?:string,responsible?:string} $context
+	 * @param array{locale?:string,form_name?:string,source_url?:string,document_referrer?:string,attribution?:array,repeat_count?:int,state?:string,actor?:string} $context
 	 */
 	public static function format(array $fields, array $context = []): string
 	{
@@ -36,18 +36,18 @@ final class Telegram_Message_Formatter
 		$state = (string) ($context['state'] ?? 'new');
 		if (! in_array($state, ['new', 'acknowledged', 'rejected', 'spam'], true)) $state = 'new';
 		$repeat_count = max(0, (int) ($context['repeat_count'] ?? 0));
-		$responsible = self::is_empty($context['responsible'] ?? '') ? '' : self::clean_value($context['responsible'] ?? '', 250);
+		$actor = self::is_empty($context['actor'] ?? '') ? '' : self::clean_value($context['actor'] ?? '', 250);
 		$comment_limit = 1800;
 		$utm = $attribution;
 		$include_source_link = ! $direct_source;
 
-		$render = static function () use (&$data, $labels, $state, $repeat_count, $responsible, &$source_label, $source_url, &$utm, &$comment_limit, &$include_source_link): string {
+		$render = static function () use (&$data, $labels, $state, $repeat_count, $actor, &$source_label, $source_url, &$utm, &$comment_limit, &$include_source_link): string {
 			return self::render(
 				$data,
 				$labels,
 				$state,
 				$repeat_count,
-				$responsible,
+				$actor,
 				$source_label,
 				$include_source_link ? $source_url : '',
 				$utm,
@@ -129,7 +129,7 @@ final class Telegram_Message_Formatter
 		return $data;
 	}
 
-	private static function render(array $data, array $labels, string $state, int $repeat_count, string $responsible, string $source_label, string $source_url, array $utm, int $comment_limit): string
+	private static function render(array $data, array $labels, string $state, int $repeat_count, string $actor, string $source_label, string $source_url, array $utm, int $comment_limit): string
 	{
 		$title = match ($state) {
 			'acknowledged' => $labels['working_title'],
@@ -140,10 +140,15 @@ final class Telegram_Message_Formatter
 		$sections = ['<b>' . self::escape($title) . '</b>'];
 		if ($state === 'new' && $repeat_count > 1) {
 			$sections[0] .= "\n<i>" . self::escape(self::repeat_label($labels, $repeat_count)) . '</i>';
-		} elseif ($state === 'acknowledged') {
-			$status = '<b>' . self::escape($labels['status']) . ':</b> ' . self::escape($labels['in_progress']);
-			if ($responsible !== '') $status .= "\n<b>" . self::escape($labels['responsible']) . ':</b> ' . self::escape($responsible);
-			$sections[0] .= "\n" . $status;
+		}
+		if ($actor !== '') {
+			$actor_label = match ($state) {
+				'acknowledged' => $labels['taken_by'],
+				'rejected' => $labels['rejected_by'],
+				'spam' => $labels['spam_by'],
+				default => $labels['reopened_by'],
+			};
+			$sections[0] .= "\n<b>" . self::escape($actor_label) . ':</b> ' . self::escape($actor);
 		}
 
 		$contact = [];
@@ -187,15 +192,15 @@ final class Telegram_Message_Formatter
 	private static function labels(bool $english): array
 	{
 		return $english ? [
-			'new_title' => 'New submission', 'working_title' => 'Submission in progress', 'rejected_title' => 'Submission was not suitable', 'spam_title' => 'Submission marked as spam',
+			'new_title' => 'New submission', 'working_title' => 'Submission in progress', 'rejected_title' => 'Submission rejected', 'spam_title' => 'Submission marked as spam',
 			'repeat_one' => 'Repeat inquiry · %d submission', 'repeat_few' => 'Repeat inquiry · %d submissions', 'repeat_many' => 'Repeat inquiry · %d submissions',
-			'status' => 'Status', 'in_progress' => 'in progress', 'responsible' => 'Assigned to',
+			'taken_by' => 'Taken by', 'rejected_by' => 'Rejected by', 'spam_by' => 'Marked as spam by', 'reopened_by' => 'Reopened by',
 			'contacts' => 'Contact details', 'name' => 'Name', 'phone' => 'Phone number', 'details' => 'Inquiry details', 'form' => 'Form', 'comment' => 'Comment',
 			'source' => 'Source', 'open_page' => 'Open page', 'campaign' => 'Advertising campaign data',
 		] : [
-			'new_title' => 'Нова заявка', 'working_title' => 'Заявка в роботі', 'rejected_title' => 'Заявка не підійшла', 'spam_title' => 'Заявку позначено як спам',
+			'new_title' => 'Нова заявка', 'working_title' => 'Заявка в роботі', 'rejected_title' => 'Заявку відхилено', 'spam_title' => 'Заявку позначено як спам',
 			'repeat_one' => 'Повторне звернення · %d заявка', 'repeat_few' => 'Повторне звернення · %d заявки', 'repeat_many' => 'Повторне звернення · %d заявок',
-			'status' => 'Статус', 'in_progress' => 'у роботі', 'responsible' => 'Відповідальний',
+			'taken_by' => 'Взяв у роботу', 'rejected_by' => 'Відхилив заявку', 'spam_by' => 'Позначив як спам', 'reopened_by' => 'Повернув у нові',
 			'contacts' => 'Контактні дані', 'name' => 'Ім’я', 'phone' => 'Номер телефону', 'details' => 'Деталі звернення', 'form' => 'Форма', 'comment' => 'Коментар',
 			'source' => 'Джерело', 'open_page' => 'Відкрити сторінку', 'campaign' => 'Дані рекламної кампанії',
 		];
