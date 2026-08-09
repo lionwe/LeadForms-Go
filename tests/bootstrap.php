@@ -20,6 +20,7 @@ namespace {
 	function sanitize_key(string $value): string { return strtolower((string) preg_replace('/[^a-zA-Z0-9_\-]/', '', $value)); }
 	function sanitize_text_field(string $value): string { return trim(strip_tags($value)); }
 	function sanitize_textarea_field(string $value): string { return trim(strip_tags($value)); }
+	function wp_json_encode(mixed $value, int $flags = 0): string|false { return json_encode($value, $flags); }
 	function sanitize_email(string $value): string { return filter_var($value, FILTER_SANITIZE_EMAIL); }
 	function is_email(string $value): bool { return filter_var($value, FILTER_VALIDATE_EMAIL) !== false; }
 	function absint(mixed $value): int { return abs((int) $value); }
@@ -41,6 +42,12 @@ namespace {
 }
 
 namespace LeadFormsGo {
+	final class Repositories
+	{
+		public static array $forms = [];
+		public static function form(int $id): ?array { return self::$forms[$id] ?? null; }
+	}
+
 	final class Form_Builder
 	{
 		public static function sanitize_schema(mixed $schema): array { return is_array($schema) ? $schema : []; }

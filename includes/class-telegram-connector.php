@@ -80,7 +80,7 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 			$text = Submission_Presenter::telegram_message($request->payload, $request->form_id, $locale, $request->referer, (string) ($variables['form_name'] ?? ''));
 			$mode = 'plain';
 		} else {
-			$text = Telegram_Template::render($template, $mode, $variables);
+			$text = Telegram_Template::render($template, $mode, Submission_Presenter::for_telegram_variables($variables, $request->form_id, $locale));
 		}
 		if ($text === '') return new Result(false, 0, __('Шаблон Telegram сформував порожнє повідомлення.', 'leadforms-go'), false);
 		if (! Telegram_Template::within_limit($text)) return new Result(false, 0, __('Повідомлення Telegram після підстановки змінних перевищує 4096 символів.', 'leadforms-go'), false);

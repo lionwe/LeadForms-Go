@@ -12,6 +12,7 @@ require dirname(__DIR__) . '/includes/class-submission-validator.php';
 require dirname(__DIR__) . '/includes/class-result.php';
 require dirname(__DIR__) . '/includes/class-lead-deduplicator.php';
 require dirname(__DIR__) . '/includes/class-telegram-interactions.php';
+require dirname(__DIR__) . '/includes/class-submission-presenter.php';
 
 use LeadFormsGo\Google_Sheets_Service;
 use LeadFormsGo\Route_Config;
@@ -21,6 +22,8 @@ use LeadFormsGo\Submission_Validator;
 use LeadFormsGo\Form_Translations;
 use LeadFormsGo\Lead_Deduplicator;
 use LeadFormsGo\Telegram_Interactions;
+use LeadFormsGo\Repositories;
+use LeadFormsGo\Submission_Presenter;
 
 $failures = [];
 $assert = static function (bool $condition, string $message) use (&$failures): void {
@@ -62,6 +65,36 @@ $assert(Form_Translations::default_fields('pl_PL')['phone']['label'] === 'Numer 
 $assert(Form_Translations::default_fields('de_DE')['phone']['label'] === 'Telefonnummer', 'German field defaults must be translated.');
 $polish_defaults = Form_Translations::resolve([], 'pl_PL', 'uk_UA');
 $assert($polish_defaults['submit_label'] === 'Wyślij', 'Polish forms without stored translations must use Polish defaults.');
+$choice_schema = [
+	['key' => 'product', 'type' => 'select', 'label' => 'Продукт', 'options' => ['unihum', 'unipellet']],
+	['key' => 'delivery', 'type' => 'radio', 'label' => 'Доставка', 'options' => ['pickup', 'courier']],
+];
+Repositories::$forms[7] = [
+	'editor_mode' => 'visual',
+	'form_schema' => wp_json_encode($choice_schema),
+	'default_locale' => 'uk_UA',
+	'translations' => wp_json_encode([
+		'uk_UA' => ['submit_label' => 'Надіслати', 'messages' => [], 'fields' => [
+			'product' => ['label' => 'Продукт', 'placeholder' => 'Оберіть продукт', 'options' => ['Унігум', 'Уніпелет']],
+			'delivery' => ['label' => 'Доставка', 'placeholder' => '', 'options' => ['Самовивіз', 'Кур’єр']],
+		]],
+		'en_US' => ['submit_label' => 'Send', 'messages' => [], 'fields' => [
+			'product' => ['label' => 'Product', 'placeholder' => 'Choose a product', 'options' => ['Unihum', 'Unipellet']],
+			'delivery' => ['label' => 'Delivery', 'placeholder' => '', 'options' => ['Pickup', 'Courier']],
+		]],
+	]),
+];
+$presented_choices = Submission_Presenter::for_admin(['product' => 'unihum', 'delivery' => 'courier'], 7, 'en_US');
+$assert(($presented_choices['Product'] ?? '') === 'Unihum', 'Select values must use the localized option label.');
+$assert(($presented_choices['Delivery'] ?? '') === 'Courier', 'Radio values must use the localized option label.');
+$fallback_choice = Submission_Presenter::for_admin(['product' => 'unipellet'], 7, 'fr_FR');
+$assert(($fallback_choice['Продукт'] ?? '') === 'Уніпелет', 'Missing option translations must fall back to the primary locale.');
+$unknown_choice = Submission_Presenter::for_admin(['product' => 'legacy-value'], 7, 'en_US');
+$assert(($unknown_choice['Product'] ?? '') === 'legacy-value', 'Unknown option values must remain unchanged.');
+$telegram_variables = Submission_Presenter::for_telegram_variables(['product' => 'unihum', 'page_url' => 'https://example.com'], 7, 'en_US');
+$assert($telegram_variables['product'] === 'Unihum', 'Telegram template variables must use localized option labels.');
+$assert($telegram_variables['page_url'] === 'https://example.com', 'Non-form Telegram variables must remain unchanged.');
+$assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'product'], ['product' => 'unihum']) === 'unihum', 'Connector mappings must keep raw option values.');
 $snapshot = Route_Config::snapshot($config, 'telegram', ['form_name' => 'Original', 'submitted_at' => '2026-07-13 10:00:00']);
 $snapshot_route = Route_Config::route_from_snapshot($snapshot, 'telegram');
 $assert($snapshot_route['_context']['form_name'] === 'Original', 'Route snapshot context must be immutable.');

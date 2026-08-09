@@ -23,6 +23,7 @@ delete_option('leadforms_go_connection_profiles');
 delete_option('leadforms_go_telegram_confirmed');
 delete_option('leadforms_go_dedup_secret');
 delete_option('leadforms_go_dedup_backfill_complete');
+delete_option('leadforms_go_dedup_backfill_lock');
 delete_option('leadforms_go_google_credentials');
 delete_option('leadforms_go_schema_version');
 delete_option('leadforms_go_legacy_migrated');

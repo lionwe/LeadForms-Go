@@ -78,7 +78,8 @@ final class Admin
 				'placeholder' => __('Підказка в полі', 'leadforms-go'),
 				'placeholderHelp' => __('Текст усередині порожнього поля.', 'leadforms-go'),
 				'options' => __('Варіанти', 'leadforms-go'),
-				'optionsHelp' => __('Один варіант на рядок. Технічні values створюються з основної мови.', 'leadforms-go'),
+				'optionsHelp' => __('Один варіант на рядок. Структура списку спільна для всіх мов, а технічні values залишаються стабільними.', 'leadforms-go'),
+				'optionsTranslationHelp' => __('Перекладіть кожен варіант у тому самому порядку. Кількість варіантів змінюється в основній мові.', 'leadforms-go'),
 				'defaultValue' => __('Значення прихованого поля', 'leadforms-go'),
 				'condition' => __('Умовне відображення', 'leadforms-go'),
 				'conditionDisabled' => __('Завжди показувати', 'leadforms-go'),
@@ -682,6 +683,8 @@ final class Admin
 	public function dedup_notice(): void
 	{
 		if (! current_user_can('manage_options') || get_option('leadforms_go_schema_version') !== '1.8.0' || get_option('leadforms_go_dedup_backfill_complete')) return;
+		$screen = get_current_screen();
+		if (! $screen || ! str_contains((string) $screen->id, 'leadforms-go')) return;
 		echo '<div class="notice notice-info"><p>' . esc_html__('LeadForms Go фоново індексує старі заявки для визначення повторних звернень. Нові заявки вже обробляються одразу.', 'leadforms-go') . '</p></div>';
 	}
 

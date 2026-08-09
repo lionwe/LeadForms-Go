@@ -79,6 +79,7 @@ class LeadFormsGoAdmin {
 		if (!this.translations || Array.isArray(this.translations) || typeof this.translations !== 'object') this.translations = {};
 		this.currentLocale = this.defaultLocaleInput?.value || 'uk_UA';
 		this.hydrateFieldKeys();
+		this.normalizeFieldTypes();
 		document.querySelectorAll('[data-lfg-locale]').forEach((button) => this.ensureTranslation(button.dataset.lfgLocale));
 		this.ensureTranslation(this.currentLocale);
 		this.setMode(this.modeInput.value || 'visual');
@@ -105,7 +106,7 @@ class LeadFormsGoAdmin {
 			this.renderPreview();
 		});
 		this.updateButtonIconPanels();
-		this.defaultLocaleInput?.addEventListener('change', () => { this.updateLocaleProgress(); this.syncCodePreview(); });
+		this.defaultLocaleInput?.addEventListener('change', () => this.renderBuilder());
 	}
 
 	hydrateFieldKeys() {
@@ -115,7 +116,17 @@ class LeadFormsGoAdmin {
 		this.schema.forEach((field) => {
 			if (field.key) return;
 			const match = templates.find((item) => item.field.type === field.type && item.field.name === field.name);
-			field.key = match?.key || field.type || 'field';
+			const nameMatches = templates.filter((item) => item.field.name === field.name);
+			field.key = match?.key || (nameMatches.length === 1 ? nameMatches[0].key : '') || field.id || field.type || 'field';
+		});
+	}
+
+	normalizeFieldTypes() {
+		const allowed = new Set(['text', 'tel', 'email', 'textarea', 'checkbox', 'select', 'radio', 'hidden']);
+		this.schema.forEach((field) => {
+			const key = String(field.key || field.id || '').replaceAll('-', '_').replace(/_\d+$/, '');
+			const type = String(field.type || '').trim().toLowerCase();
+			field.type = ['select', 'radio'].includes(key) ? key : (allowed.has(type) ? type : 'text');
 		});
 	}
 
@@ -234,7 +245,28 @@ class LeadFormsGoAdmin {
 	resolvedFieldTranslation(field, locale = this.currentLocale) {
 		const current = this.fieldTranslation(field, locale);
 		const fallback = this.ensureTranslation(this.defaultLocaleInput?.value || 'uk_UA').fields[field.key] || {};
-		return { label: current.label || fallback.label || field.label || field.key, placeholder: current.placeholder || fallback.placeholder || field.placeholder || '', options: current.options?.length ? current.options : (fallback.options || field.options || []) };
+		return {
+			label: current.label || fallback.label || field.label || field.key,
+			placeholder: current.placeholder || fallback.placeholder || field.placeholder || '',
+			options: (field.options || []).map((option, index) => current.options?.[index] || fallback.options?.[index] || option),
+		};
+	}
+
+	nextOptionKey(index, used) {
+		let suffix = index + 1;
+		let key = `option_${suffix}`;
+		while (used.has(key)) key = `option_${++suffix}`;
+		used.add(key);
+		return key;
+	}
+
+	syncOptionTranslations(field) {
+		const fallback = this.resolvedFieldTranslation(field, this.defaultLocaleInput?.value || 'uk_UA').options;
+		Object.values(this.translations).forEach((translation) => {
+			const fieldText = translation?.fields?.[field.key];
+			if (!fieldText) return;
+			fieldText.options = (field.options || []).map((option, index) => fieldText.options?.[index] || fallback[index] || option);
+		});
 	}
 
 	setLocale(locale) {
@@ -478,17 +510,26 @@ class LeadFormsGoAdmin {
 		if (['select', 'radio'].includes(field.type)) {
 			const optionsLabel = document.createElement('label');
 			const title = document.createElement('strong'); title.textContent = this.config.builder.options;
-			const help = document.createElement('small'); help.textContent = this.config.builder.optionsHelp;
-			const options = document.createElement('textarea'); options.rows = 4; options.value = (fieldText.options?.length ? fieldText.options : (field.options || [])).join('\n');
+			const help = document.createElement('small');
+			help.textContent = this.currentLocale === (this.defaultLocaleInput?.value || 'uk_UA') ? this.config.builder.optionsHelp : this.config.builder.optionsTranslationHelp;
+			const options = document.createElement('textarea'); options.rows = 4; options.value = this.resolvedFieldTranslation(field).options.join('\n');
 			options.addEventListener('input', () => {
-				const labels = options.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 50);
-				this.fieldTranslation(field).options = labels;
-				if (this.currentLocale === (this.defaultLocaleInput?.value || 'uk_UA')) {
-					const used = new Set();
-					field.options = labels.map((value, optionIndex) => { let key = value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `option_${optionIndex + 1}`; while (used.has(key)) key = `${key}_${optionIndex + 1}`; used.add(key); return key; });
+				const defaultLocale = this.defaultLocaleInput?.value || 'uk_UA';
+				const rawLabels = options.value.split(/\r?\n/).map((value) => value.trim()).slice(0, 50);
+				if (this.currentLocale === defaultLocale) {
+					const labels = rawLabels.filter(Boolean);
+					const previous = Array.isArray(field.options) ? field.options : [];
+					const used = new Set(previous);
+					field.options = labels.map((value, optionIndex) => previous[optionIndex] || this.nextOptionKey(optionIndex, used));
+					this.fieldTranslation(field).options = labels;
+					this.syncOptionTranslations(field);
+				} else {
+					const fallback = this.resolvedFieldTranslation(field, defaultLocale).options;
+					this.fieldTranslation(field).options = (field.options || []).map((option, optionIndex) => rawLabels[optionIndex] || fallback[optionIndex] || option);
 				}
 				this.syncTranslations(); this.syncSchema(); this.syncCodePreview(); this.renderPreview();
 			});
+			options.addEventListener('blur', () => { options.value = this.resolvedFieldTranslation(field).options.join('\n'); });
 			optionsLabel.append(title, help, options); fields.append(optionsLabel);
 		}
 		if (field.type === 'hidden') {
