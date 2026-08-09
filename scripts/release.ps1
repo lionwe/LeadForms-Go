@@ -12,5 +12,9 @@ if (Test-Path -LiteralPath $archive) {
     Remove-Item -LiteralPath $archive -Force
 }
 
-Compress-Archive -LiteralPath $source -DestinationPath $archive -CompressionLevel Optimal
+$tar = Get-Command tar.exe -ErrorAction Stop
+& $tar.Source -a -cf $archive -C $build 'leadforms-go'
+if ($LASTEXITCODE -ne 0) {
+	throw 'Release archive generation failed.'
+}
 Write-Output "Release archive: $archive"

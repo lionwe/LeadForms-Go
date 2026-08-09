@@ -35,38 +35,46 @@ final class Submission_Presenter
 
 	public static function telegram_message(array $payload, int $form_id, string $locale, string $referer, string $form_name = ''): string
 	{
-		$english = str_starts_with(strtolower($locale), 'en');
-		$labels = $english
-			? ['title' => 'New form submission', 'form' => 'Form', 'contact' => 'Contact details', 'source' => 'Source', 'page' => 'Page', 'visited' => 'First visit', 'utm' => 'Campaign', 'referrer' => 'Referred from']
-			: ['title' => 'Нова заявка з форми', 'form' => 'Форма', 'contact' => 'Контактні дані', 'source' => 'Джерело', 'page' => 'Сторінка', 'visited' => 'Перший візит', 'utm' => 'Кампанія', 'referrer' => 'Перехід із'];
-		$attribution_keys = ['landing_page', 'document_referrer', 'visited_at', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ttclid'];
-		$contact_payload = array_diff_key($payload, array_fill_keys($attribution_keys, true));
-		$presented = self::present($contact_payload, $form_id, $locale);
-		$lines = ['🆕 ' . $labels['title']];
-		if ($form_name !== '') $lines[] = $labels['form'] . ': ' . sanitize_text_field($form_name);
-		if ($presented !== []) {
-			$lines[] = '';
-			$lines[] = '👤 ' . $labels['contact'];
-			foreach ($presented as $key => $value) $lines[] = sanitize_text_field((string) $key) . ': ' . sanitize_textarea_field(is_scalar($value) ? (string) $value : (string) wp_json_encode($value, JSON_UNESCAPED_UNICODE));
+		return self::telegram_message_for_state($payload, $form_id, $locale, $referer, $form_name);
+	}
+
+	public static function telegram_message_for_state(
+		array $payload,
+		int $form_id,
+		string $locale,
+		string $referer,
+		string $form_name = '',
+		int $repeat_count = 0,
+		string $state = 'new',
+		string $responsible = ''
+	): string {
+		return Telegram_Message_Formatter::format(self::telegram_fields($payload, $form_id, $locale), [
+			'locale' => $locale,
+			'form_name' => $form_name,
+			'source_url' => Telegram_Message_Formatter::source_url($payload, $referer),
+			'document_referrer' => (string) ($payload['document_referrer'] ?? ''),
+			'attribution' => $payload,
+			'repeat_count' => $repeat_count,
+			'state' => $state,
+			'responsible' => $responsible,
+		]);
+	}
+
+	public static function telegram_fields(array $payload, int $form_id, string $locale): array
+	{
+		$fields = self::translated_fields($form_id, $locale);
+		$presented = [];
+		foreach ($payload as $key => $raw_value) {
+			$field = $fields[(string) $key] ?? [];
+			$presented[] = [
+				'key' => (string) $key,
+				'label' => ! empty($field['label']) ? (string) $field['label'] : self::humanize_key((string) $key),
+				'type' => (string) ($field['type'] ?? ''),
+				'value' => $field !== [] ? self::localized_value($raw_value, $field, $locale) : $raw_value,
+				'raw_value' => $raw_value,
+			];
 		}
-		$landing_page = esc_url_raw((string) ($payload['landing_page'] ?? $referer), ['http', 'https']);
-		$document_referrer = esc_url_raw((string) ($payload['document_referrer'] ?? ''), ['http', 'https']);
-		$visited_at = self::telegram_visit_time((string) ($payload['visited_at'] ?? ''));
-		$campaign = array_filter([
-			sanitize_text_field((string) ($payload['utm_source'] ?? '')),
-			sanitize_text_field((string) ($payload['utm_medium'] ?? '')),
-			sanitize_text_field((string) ($payload['utm_campaign'] ?? '')),
-		], static fn (string $value): bool => $value !== '');
-		$external_referrer = $document_referrer !== '' && ! self::same_site_url($document_referrer) ? $document_referrer : '';
-		if ($landing_page !== '' || $visited_at !== '' || $campaign !== [] || $external_referrer !== '') {
-			$lines[] = '';
-			$lines[] = '🔗 ' . $labels['source'];
-			if ($landing_page !== '') $lines[] = $labels['page'] . ': ' . $landing_page;
-			if ($visited_at !== '') $lines[] = $labels['visited'] . ': ' . $visited_at;
-			if ($campaign !== []) $lines[] = $labels['utm'] . ': ' . implode(' / ', $campaign);
-			if ($external_referrer !== '') $lines[] = $labels['referrer'] . ': ' . $external_referrer;
-		}
-		return Telegram_Template::fit_plain(implode("\n", $lines));
+		return $presented;
 	}
 
 	private static function present(array $payload, int $form_id, string $locale): array
@@ -122,20 +130,6 @@ final class Submission_Presenter
 	{
 		$checked = in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
 		return str_starts_with(strtolower($locale), 'en') ? ($checked ? 'Yes' : 'No') : ($checked ? 'Так' : 'Ні');
-	}
-
-	private static function telegram_visit_time(string $value): string
-	{
-		$timestamp = ctype_digit($value) ? (int) $value : 0;
-		if ($timestamp <= 0 || $timestamp > time() || $timestamp < time() - YEAR_IN_SECONDS) return '';
-		return wp_date('d.m.Y H:i', $timestamp, wp_timezone());
-	}
-
-	private static function same_site_url(string $url): bool
-	{
-		$host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
-		$site_host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
-		return $host !== '' && $site_host !== '' && hash_equals($site_host, $host);
 	}
 
 	private static function humanize_key(string $key): string

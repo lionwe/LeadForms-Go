@@ -61,9 +61,25 @@ final class Telegram_Interactions
 	public static function action_buttons(int $delivery_id, string $token): array
 	{
 		return [[
-			['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token)],
-			['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token)],
+			['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
+			['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token), 'style' => 'danger'],
 		]];
+	}
+
+	public static function utility_buttons(string $phone, string $source_url): array
+	{
+		$row = [];
+		if ($phone !== '') {
+			$row[] = [
+				'text' => __('Скопіювати номер', 'leadforms-go'),
+				'copy_text' => ['text' => substr(sanitize_text_field($phone), 0, 256)],
+			];
+		}
+		$source_url = esc_url_raw($source_url, ['http', 'https']);
+		if ($source_url !== '' && wp_http_validate_url($source_url)) {
+			$row[] = ['text' => __('Відкрити сторінку', 'leadforms-go'), 'url' => $source_url, 'style' => 'primary'];
+		}
+		return $row === [] ? [] : [$row];
 	}
 
 	public static function delivery_processed(int $delivery_id, string $status, Result $result): void
@@ -141,7 +157,7 @@ final class Telegram_Interactions
 		$custom = is_array($meta['custom_keyboard'] ?? null) ? $meta['custom_keyboard'] : [];
 		if ($action === 's') {
 			$confirm = [[
-				['text' => __('Підтвердити спам', 'leadforms-go'), 'callback_data' => self::callback_data('c', $delivery_id, $token)],
+				['text' => __('Підтвердити спам', 'leadforms-go'), 'callback_data' => self::callback_data('c', $delivery_id, $token), 'style' => 'danger'],
 				['text' => __('Скасувати', 'leadforms-go'), 'callback_data' => self::callback_data('x', $delivery_id, $token)],
 			]];
 			self::edit_keyboard($token, $chat_id, $message_id, array_merge($custom, $confirm));
@@ -154,12 +170,12 @@ final class Telegram_Interactions
 			elseif (($submission['lead_state'] ?? 'new') === 'acknowledged') self::answer($token, $callback_id, __('Заявку вже взято в роботу.', 'leadforms-go'));
 			else {
 				Repositories::set_lead_state((int) $submission['id'], 'acknowledged');
-				self::edit_keyboard($token, $chat_id, $message_id, $custom);
+				self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'acknowledged', self::responsible($callback), $custom);
 				self::answer($token, $callback_id, __('Заявку взято в роботу.', 'leadforms-go'));
 			}
 		} elseif ($action === 'c') {
 			if (($submission['lead_state'] ?? 'new') !== 'spam') Repositories::set_lead_state((int) $submission['id'], 'spam');
-			self::edit_keyboard($token, $chat_id, $message_id, $custom);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'spam', '', $custom);
 			self::answer($token, $callback_id, __('Заявку позначено як спам.', 'leadforms-go'));
 		}
 		return new \WP_REST_Response(['ok' => true], 200);
@@ -198,6 +214,48 @@ final class Telegram_Interactions
 			'message_id' => $message_id,
 			'reply_markup' => wp_json_encode(['inline_keyboard' => $keyboard]),
 		]);
+	}
+
+	private static function edit_submission_message(string $token, string $chat_id, int $message_id, array $submission, array $meta, string $state, string $responsible, array $keyboard): void
+	{
+		if (empty($meta['default_message'])) {
+			self::edit_keyboard($token, $chat_id, $message_id, $keyboard);
+			return;
+		}
+		$payload = json_decode((string) ($submission['payload'] ?? ''), true);
+		if (! is_array($payload)) {
+			self::edit_keyboard($token, $chat_id, $message_id, $keyboard);
+			return;
+		}
+		$text = Submission_Presenter::telegram_message_for_state(
+			$payload,
+			(int) ($submission['form_id'] ?? 0),
+			(string) ($submission['locale'] ?? ''),
+			(string) ($submission['referer'] ?? ''),
+			(string) ($submission['form_name'] ?? ''),
+			Repositories::repeat_submission_count((int) ($submission['id'] ?? 0)),
+			$state,
+			$responsible
+		);
+		self::api($token, 'editMessageText', [
+			'chat_id' => $chat_id,
+			'message_id' => $message_id,
+			'text' => $text,
+			'parse_mode' => 'HTML',
+			'link_preview_options' => wp_json_encode(['is_disabled' => true]),
+			'reply_markup' => wp_json_encode(['inline_keyboard' => $keyboard]),
+		]);
+	}
+
+	private static function responsible(array $callback): string
+	{
+		$from = is_array($callback['from'] ?? null) ? $callback['from'] : [];
+		$username = sanitize_key((string) ($from['username'] ?? ''));
+		if ($username !== '') return '@' . $username;
+		return trim(implode(' ', array_filter([
+			sanitize_text_field((string) ($from['first_name'] ?? '')),
+			sanitize_text_field((string) ($from['last_name'] ?? '')),
+		])));
 	}
 
 	private static function answer(string $token, string $callback_id, string $text, bool $alert = false): void

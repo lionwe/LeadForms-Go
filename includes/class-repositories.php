@@ -363,6 +363,29 @@ final class Repositories
 		return $row;
 	}
 
+	public static function repeat_submission_count(int $submission_id): int
+	{
+		global $wpdb;
+		if ($submission_id <= 0) return 0;
+		$table = Database::tables()['submissions'];
+		$submission = $wpdb->get_row($wpdb->prepare(
+			"SELECT phone_fingerprint, email_fingerprint FROM {$table} WHERE id = %d",
+			$submission_id
+		), ARRAY_A);
+		if (! is_array($submission)) return 0;
+		$matches = [];
+		$args = [$submission_id];
+		foreach (['phone_fingerprint', 'email_fingerprint'] as $column) {
+			$value = (string) ($submission[$column] ?? '');
+			if ($value === '') continue;
+			$matches[] = "{$column} = %s";
+			$args[] = $value;
+		}
+		if ($matches === []) return 0;
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE id <= %d AND is_test = 0 AND lead_state <> 'spam' AND dedup_indexed = 1 AND (" . implode(' OR ', $matches) . ')';
+		return (int) $wpdb->get_var($wpdb->prepare($sql, $args));
+	}
+
 	public static function queue_summary(): array
 	{
 		return (new Statistics_Repository())->queue_summary();

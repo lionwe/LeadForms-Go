@@ -25,12 +25,14 @@ namespace {
 	function is_email(string $value): bool { return filter_var($value, FILTER_VALIDATE_EMAIL) !== false; }
 	function absint(mixed $value): int { return abs((int) $value); }
 	function esc_html(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+	function esc_attr(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 	function esc_url_raw(string $value, array $protocols = []): string
 	{
 		$scheme = strtolower((string) parse_url($value, PHP_URL_SCHEME));
 		return $protocols !== [] && ! in_array($scheme, $protocols, true) ? '' : filter_var($value, FILTER_SANITIZE_URL);
 	}
 	function wp_http_validate_url(string $value): bool { return filter_var($value, FILTER_VALIDATE_URL) !== false; }
+	function wp_parse_url(string $value, int $component = -1): mixed { return parse_url($value, $component); }
 	function wp_salt(string $scheme = 'auth'): string { return 'test-salt-' . $scheme; }
 	function get_locale(): string { return 'uk_UA'; }
 	function apply_filters(string $hook, mixed $value): mixed { return $value; }
