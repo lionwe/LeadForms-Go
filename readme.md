@@ -62,6 +62,16 @@ Submission retention and browser attribution retention are configured under Lead
 
 Run `npm run release`. The distributable plugin and ZIP archive are written to `build/` without development files or credentials.
 
+Every release archive must follow these packaging rules:
+
+- create archives only with `npm run release`; do not use PowerShell `Compress-Archive` or manually zip the build directory;
+- keep `leadforms-go/` as the single archive root so WordPress detects the plugin directory correctly;
+- store all ZIP entry paths with POSIX `/` separators, never Windows `\` separators;
+- require the archive to contain `leadforms-go/leadforms-go.php`;
+- treat any archive-validation failure as a blocked release.
+
+The release script enforces these rules and produces both `build/leadforms-go.zip` and a versioned `build/leadforms-go-{version}.zip` archive.
+
 ## Roadmap
 
 The prioritized product roadmap and current implementation status are documented in [ROADMAP.md](ROADMAP.md).
