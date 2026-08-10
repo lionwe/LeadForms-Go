@@ -103,7 +103,9 @@ final class Admin_Integrations
 		$form = $form_id > 0 ? Repositories::form($form_id) : null;
 		if (! $form) wp_send_json_error(['message' => __('Спочатку збережіть форму.', 'leadforms-go')], 404);
 		$schema = Form_Builder::sanitize_schema(json_decode((string) $form['form_schema'], true));
-		$config = Route_Config::sanitize($this->json_post('routing_config'), $schema);
+		$translations = json_decode((string) ($form['translations'] ?? ''), true);
+		$locales = Form_Translations::locales(Form_Translations::sanitize(is_array($translations) ? $translations : []));
+		$config = Route_Config::sanitize($this->json_post('routing_config'), $schema, $locales);
 		$valid = Route_Config::validate($config, $schema);
 		if (is_wp_error($valid)) wp_send_json_error(['message' => $valid->get_error_message()], 422);
 		$connectors = Connectors::all();

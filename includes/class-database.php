@@ -200,11 +200,12 @@ final class Database
 			$locale = Form_Translations::normalize_locale((string) $row['default_locale']) ?: Form_Translations::DEFAULT_LOCALE;
 			$translations = json_decode((string) $row['translations'], true);
 			$translations = Form_Translations::sanitize(is_array($translations) ? $translations : []);
-			if ($schema !== []) $translations = Form_Translations::complete($translations, $schema);
+			$locales = Form_Translations::locales($translations);
+			if ($schema !== []) $translations = Form_Translations::complete($translations, $schema, array_keys($locales));
 			$data = [
 				'default_locale' => $locale,
 				'translations' => (string) wp_json_encode($translations, JSON_UNESCAPED_UNICODE),
-				'routing_config' => (string) wp_json_encode(Route_Config::sanitize(json_decode((string) ($row['routing_config'] ?? ''), true), $schema), JSON_UNESCAPED_UNICODE),
+				'routing_config' => (string) wp_json_encode(Route_Config::sanitize(json_decode((string) ($row['routing_config'] ?? ''), true), $schema, $locales), JSON_UNESCAPED_UNICODE),
 				'routing_version' => Route_Config::VERSION,
 			];
 			$formats = ['%s', '%s', '%s', '%d'];

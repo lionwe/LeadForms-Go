@@ -24,6 +24,10 @@ final class Repositories
 	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = [], array $routing_config = [], array $success = []): int|false
 	{
 		$now = current_time('mysql');
+		$translations = Form_Translations::sanitize($translations);
+		$locales = Form_Translations::locales($translations);
+		$default_locale = Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE;
+		if (! isset($locales[$default_locale])) $default_locale = Form_Translations::DEFAULT_LOCALE;
 		$data = [
 			'name' => $name,
 			'code' => $code,
@@ -31,9 +35,9 @@ final class Repositories
 			'form_schema' => wp_json_encode($schema, JSON_UNESCAPED_UNICODE),
 			'submit_label' => $submit_label,
 			'button_icon' => wp_json_encode(Form_Builder::sanitize_button_icon($button_icon), JSON_UNESCAPED_UNICODE),
-			'default_locale' => Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE,
-			'translations' => wp_json_encode(Form_Translations::sanitize($translations), JSON_UNESCAPED_UNICODE),
-			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema), JSON_UNESCAPED_UNICODE),
+			'default_locale' => $default_locale,
+			'translations' => wp_json_encode($translations, JSON_UNESCAPED_UNICODE),
+			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema, $locales), JSON_UNESCAPED_UNICODE),
 			'routing_version' => Route_Config::VERSION,
 			'success_action' => in_array($success['action'] ?? '', ['message', 'hide', 'redirect'], true) ? $success['action'] : 'message',
 			'success_redirect_url' => self::safe_redirect_url((string) ($success['redirect_url'] ?? '')),

@@ -70,6 +70,10 @@ class LeadFormsGoAdmin {
 		this.faCatalog = document.querySelector('[data-lfg-fa-catalog]');
 		this.translationsInput = document.querySelector('[data-lfg-translations]');
 		this.defaultLocaleInput = document.querySelector('[data-lfg-default-locale]');
+		this.languageTabs = document.querySelector('.lfg-language-tabs');
+		this.languageNameInput = document.querySelector('[data-lfg-language-name]');
+		this.languageCodeInput = document.querySelector('[data-lfg-language-code]');
+		this.languageResult = document.querySelector('[data-lfg-language-result]');
 		this.preview = document.querySelector('[data-lfg-preview]');
 		this.messageFields = document.querySelector('[data-lfg-message-fields]');
 		if (!this.modeInput || !this.schemaInput || !this.canvas) return;
@@ -149,6 +153,10 @@ class LeadFormsGoAdmin {
 		if (localeButton) this.setLocale(localeButton.dataset.lfgLocale);
 		const copyLanguage = event.target.closest('[data-lfg-copy-language]');
 		if (copyLanguage) this.copyDefaultLanguage();
+		const addLanguage = event.target.closest('[data-lfg-add-language]');
+		if (addLanguage) this.addLanguage();
+		const removeLanguage = event.target.closest('[data-lfg-remove-language]');
+		if (removeLanguage) this.removeLanguage(removeLanguage.dataset.lfgRemoveLanguage);
 		const button = event.target.closest('[data-lfg-test]');
 		if (button) await this.testConnector(button);
 		const googleUpload = event.target.closest('[data-lfg-google-upload]');
@@ -236,6 +244,76 @@ class LeadFormsGoAdmin {
 		return translation;
 	}
 
+	normalizeLocale(value) {
+		const parts = String(value || '').trim().replaceAll('-', '_').split('_', 2);
+		const language = (parts[0] || '').toLowerCase();
+		const region = (parts[1] || '').toUpperCase();
+		if (!/^[a-z]{2,3}$/.test(language) || (region && !/^[A-Z]{2}$/.test(region))) return '';
+		return region ? `${language}_${region}` : language;
+	}
+
+	setLanguageResult(message = '', error = false) {
+		if (!this.languageResult) return;
+		this.languageResult.textContent = message;
+		this.languageResult.classList.toggle('is-error', error);
+	}
+
+	addLanguage() {
+		const name = String(this.languageNameInput?.value || '').trim();
+		const locale = this.normalizeLocale(this.languageCodeInput?.value || '');
+		if (!name || !locale) {
+			this.setLanguageResult(this.config.builder.invalidLocale, true);
+			return;
+		}
+		if (document.querySelector(`[data-lfg-locale="${CSS.escape(locale)}"]`)) {
+			this.setLanguageResult(this.config.builder.duplicateLocale, true);
+			return;
+		}
+		if (document.querySelectorAll('[data-lfg-remove-language]').length >= this.config.builder.maxCustomLocales) {
+			this.setLanguageResult(this.config.builder.maxLocalesMessage, true);
+			return;
+		}
+		this.translations[locale] = { language_name: name, submit_label: '', messages: {}, fields: {} };
+		this.schema.forEach((field) => { this.translations[locale].fields[field.key] = { label: '', placeholder: '', options: [] }; });
+
+		const item = document.createElement('span');
+		item.className = 'lfg-language-tab-item is-custom';
+		item.dataset.lfgLanguageItem = locale;
+		const tab = document.createElement('button');
+		tab.type = 'button'; tab.className = 'lfg-language-tab'; tab.dataset.lfgLocale = locale; tab.setAttribute('role', 'tab');
+		const label = document.createElement('span'); label.dataset.lfgLocaleLabel = ''; label.textContent = name;
+		const progress = document.createElement('small'); progress.dataset.lfgLocaleProgress = '';
+		tab.append(label, progress);
+		const remove = document.createElement('button');
+		remove.type = 'button'; remove.className = 'lfg-language-remove'; remove.dataset.lfgRemoveLanguage = locale; remove.setAttribute('aria-label', this.config.builder.removeLanguage);
+		const icon = document.createElement('span'); icon.className = 'dashicons dashicons-no-alt'; icon.setAttribute('aria-hidden', 'true'); remove.append(icon);
+		item.append(tab, remove); this.languageTabs?.append(item);
+		const option = document.createElement('option'); option.value = locale; option.textContent = name; this.defaultLocaleInput?.append(option);
+		if (this.languageNameInput) this.languageNameInput.value = '';
+		if (this.languageCodeInput) this.languageCodeInput.value = '';
+		this.setLanguageResult();
+		this.syncTranslations();
+		this.setLocale(locale);
+	}
+
+	removeLanguage(locale) {
+		if (!locale || !this.translations[locale]) return;
+		if (this.defaultLocaleInput?.value === locale) {
+			this.setLanguageResult(this.config.builder.primaryLanguageRemove, true);
+			return;
+		}
+		if (!window.confirm(this.config.builder.removeLanguageConfirm)) return;
+		delete this.translations[locale];
+		document.querySelector(`[data-lfg-language-item="${CSS.escape(locale)}"]`)?.remove();
+		this.defaultLocaleInput?.querySelector(`option[value="${CSS.escape(locale)}"]`)?.remove();
+		if (this.currentLocale === locale) {
+			this.currentLocale = this.defaultLocaleInput?.value || 'uk_UA';
+			this.submitLabelInput.value = this.ensureTranslation(this.currentLocale).submit_label || '';
+		}
+		this.setLanguageResult();
+		this.renderBuilder();
+	}
+
 	fieldTranslation(field, locale = this.currentLocale) {
 		const translation = this.ensureTranslation(locale);
 		translation.fields[field.key] ||= { label: '', placeholder: '', options: [] };
@@ -280,7 +358,9 @@ class LeadFormsGoAdmin {
 	copyDefaultLanguage() {
 		const sourceLocale = this.defaultLocaleInput?.value || 'uk_UA';
 		if (this.currentLocale === sourceLocale || !window.confirm(this.config.builder.copyLanguageConfirm)) return;
+		const languageName = this.translations[this.currentLocale]?.language_name || '';
 		this.translations[this.currentLocale] = JSON.parse(JSON.stringify(this.ensureTranslation(sourceLocale)));
+		if (languageName) this.translations[this.currentLocale].language_name = languageName;
 		this.submitLabelInput.value = this.translations[this.currentLocale].submit_label || '';
 		this.renderBuilder();
 	}

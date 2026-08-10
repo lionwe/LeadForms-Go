@@ -124,7 +124,9 @@ final class Route_Config
 		if (! is_array($form)) return self::defaults();
 		$schema = json_decode((string) ($form['form_schema'] ?? ''), true);
 		$config = json_decode((string) ($form['routing_config'] ?? ''), true);
-		return self::sanitize($config, Form_Builder::sanitize_schema($schema));
+		$translations = json_decode((string) ($form['translations'] ?? ''), true);
+		$locales = Form_Translations::locales(Form_Translations::sanitize(is_array($translations) ? $translations : []));
+		return self::sanitize($config, Form_Builder::sanitize_schema($schema), $locales);
 	}
 
 	public static function snapshot(array $config, string $connector, array $context = []): array

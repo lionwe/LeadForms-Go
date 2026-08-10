@@ -86,6 +86,13 @@ final class Admin
 				'conditionValue' => __('Значення для порівняння', 'leadforms-go'),
 				'conditionOperators' => ['equals' => __('Дорівнює', 'leadforms-go'), 'not_equals' => __('Не дорівнює', 'leadforms-go'), 'contains' => __('Містить', 'leadforms-go'), 'filled' => __('Заповнено', 'leadforms-go')],
 				'copyLanguageConfirm' => __('Замінити тексти цієї мови текстами з основної мови?', 'leadforms-go'),
+				'maxCustomLocales' => Form_Translations::MAX_CUSTOM_LOCALES,
+				'invalidLocale' => __('Вкажіть назву та коректний код мови, наприклад fr_FR або es.', 'leadforms-go'),
+				'duplicateLocale' => __('Мова з таким кодом уже додана.', 'leadforms-go'),
+				'maxLocalesMessage' => sprintf(__('До однієї форми можна додати не більше %d власних мов.', 'leadforms-go'), Form_Translations::MAX_CUSTOM_LOCALES),
+				'removeLanguageConfirm' => __('Видалити цю мову та всі введені для неї переклади?', 'leadforms-go'),
+				'primaryLanguageRemove' => __('Спочатку виберіть іншу основну мову.', 'leadforms-go'),
+				'removeLanguage' => __('Видалити мову', 'leadforms-go'),
 				'iconSvgInvalid' => __('Вставте коректний SVG-код.', 'leadforms-go'),
 				'selectSvg' => __('Виберіть SVG з медіабібліотеки', 'leadforms-go'),
 				'useSvg' => __('Використати SVG', 'leadforms-go'),
@@ -263,8 +270,10 @@ final class Admin
 			$default_locale = Form_Translations::normalize_locale((string) ($form['default_locale'] ?? '')) ?: Form_Translations::DEFAULT_LOCALE;
 			$translations = json_decode((string) ($form['translations'] ?? ''), true);
 			$translations = Form_Translations::sanitize(is_array($translations) ? $translations : []);
-			if ($schema !== []) $translations = Form_Translations::complete($translations, $schema);
-			$locales = Form_Translations::available_locales();
+			$base_locales = Form_Translations::available_locales();
+			$locales = Form_Translations::locales($translations);
+			if ($schema !== []) $translations = Form_Translations::complete($translations, $schema, array_keys($locales));
+			if (! isset($locales[$default_locale])) $default_locale = Form_Translations::DEFAULT_LOCALE;
 			echo '<form class="lfg-card lfg-form-editor" method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
 			wp_nonce_field('leadforms_go_save_form');
 			echo '<input type="hidden" name="action" value="leadforms_go_save_form"><input type="hidden" name="id" value="' . esc_attr((string) ($form['id'] ?? 0)) . '">';
@@ -272,10 +281,16 @@ final class Admin
 			echo '<input type="hidden" name="editor_mode" value="' . esc_attr($mode) . '" data-lfg-mode-input>';
 			echo '<div class="lfg-editor-tabs" role="tablist" aria-label="' . esc_attr__('Розділ редактора', 'leadforms-go') . '"><button type="button" class="lfg-editor-tab" role="tab" aria-controls="lfg-visual-panel" data-lfg-mode="visual">' . esc_html__('Візуально', 'leadforms-go') . '</button><button type="button" class="lfg-editor-tab" role="tab" aria-controls="lfg-code-panel" data-lfg-mode="code">' . esc_html__('Код', 'leadforms-go') . '</button><button type="button" class="lfg-editor-tab" role="tab" aria-controls="lfg-integrations-panel" data-lfg-integrations-tab>' . esc_html__('Інтеграції', 'leadforms-go') . '</button></div>';
 			echo '<section class="lfg-language-panel"><div><strong>' . esc_html__('Мова форми', 'leadforms-go') . '</strong><span>' . esc_html__('Структура спільна для всіх мов. Тут змінюються лише тексти.', 'leadforms-go') . '</span></div><div class="lfg-language-tabs" role="tablist">';
-			foreach ($locales as $locale => $label) printf('<button type="button" class="lfg-language-tab" data-lfg-locale="%s" role="tab"><span>%s</span><small data-lfg-locale-progress></small></button>', esc_attr($locale), esc_html((string) $label));
+			foreach ($locales as $locale => $label) {
+				echo '<span class="lfg-language-tab-item' . (! isset($base_locales[$locale]) ? ' is-custom' : '') . '" data-lfg-language-item="' . esc_attr($locale) . '"><button type="button" class="lfg-language-tab" data-lfg-locale="' . esc_attr($locale) . '" role="tab"><span data-lfg-locale-label>' . esc_html((string) $label) . '</span><small data-lfg-locale-progress></small></button>';
+				if (! isset($base_locales[$locale])) echo '<button type="button" class="lfg-language-remove" data-lfg-remove-language="' . esc_attr($locale) . '" aria-label="' . esc_attr__('Видалити мову', 'leadforms-go') . '"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span></button>';
+				echo '</span>';
+			}
 			echo '</div><div class="lfg-language-actions"><label><span>' . esc_html__('Основна мова', 'leadforms-go') . '</span><select name="default_locale" data-lfg-default-locale>';
 			foreach ($locales as $locale => $label) echo '<option value="' . esc_attr($locale) . '" ' . selected($default_locale, $locale, false) . '>' . esc_html((string) $label) . '</option>';
-			echo '</select></label><button type="button" class="button" data-lfg-copy-language>' . esc_html__('Скопіювати тексти з основної мови', 'leadforms-go') . '</button></div><textarea hidden name="translations" data-lfg-translations>' . esc_textarea((string) wp_json_encode($translations, JSON_UNESCAPED_UNICODE)) . '</textarea></section>';
+			echo '</select></label><button type="button" class="button" data-lfg-copy-language>' . esc_html__('Скопіювати тексти з основної мови', 'leadforms-go') . '</button></div>';
+			echo '<div class="lfg-language-add"><div><strong>' . esc_html__('Додати власну мову', 'leadforms-go') . '</strong><small>' . esc_html__('Вкажіть зрозумілу назву й стандартний locale-код. Після збереження мова також з’явиться в шаблонах Telegram.', 'leadforms-go') . '</small></div><label><span>' . esc_html__('Назва мови', 'leadforms-go') . '</span><input type="text" maxlength="80" data-lfg-language-name placeholder="' . esc_attr__('Français', 'leadforms-go') . '"></label><label><span>' . esc_html__('Код мови', 'leadforms-go') . '</span><input type="text" maxlength="6" data-lfg-language-code placeholder="fr_FR"></label><button type="button" class="button" data-lfg-add-language>' . esc_html__('Додати мову', 'leadforms-go') . '</button><span class="lfg-language-result" data-lfg-language-result role="status" aria-live="polite"></span></div>';
+			echo '<textarea hidden name="translations" data-lfg-translations>' . esc_textarea((string) wp_json_encode($translations, JSON_UNESCAPED_UNICODE)) . '</textarea></section>';
 			echo '<div id="lfg-visual-panel" role="tabpanel" data-lfg-panel="visual" class="lfg-builder"' . ($mode === 'visual' ? '' : ' hidden') . '><aside class="lfg-builder__palette"><h2>' . esc_html__('Готові поля', 'leadforms-go') . '</h2><p>' . esc_html__('Натисніть на плитку, щоб додати поле.', 'leadforms-go') . '</p><div class="lfg-builder__tiles">';
 			foreach (Form_Builder::tiles() as $key => $tile) {
 				printf('<button type="button" class="lfg-field-tile" data-lfg-add="%s" data-lfg-template="%s"><span class="dashicons dashicons-plus-alt2"></span>%s</button>', esc_attr($key), esc_attr((string) wp_json_encode($tile, JSON_UNESCAPED_UNICODE)), esc_html($tile['label']));
@@ -533,6 +548,8 @@ final class Admin
 		$default_locale = Form_Translations::normalize_locale(self::scalar_string($_POST['default_locale'] ?? '')) ?: Form_Translations::DEFAULT_LOCALE;
 		$raw_translations = isset($_POST['translations']) && is_string($_POST['translations']) ? json_decode(wp_unslash($_POST['translations']), true) : [];
 		$translations = Form_Translations::sanitize(is_array($raw_translations) ? $raw_translations : []);
+		$locales = Form_Translations::locales($translations);
+		if (! isset($locales[$default_locale])) $default_locale = Form_Translations::DEFAULT_LOCALE;
 		$schema = [];
 		if ($mode === 'visual') {
 			$raw_schema = isset($_POST['schema']) && is_string($_POST['schema']) ? json_decode(wp_unslash($_POST['schema']), true) : [];
@@ -540,7 +557,7 @@ final class Admin
 			if ($schema === []) wp_die(esc_html__('Додайте щонайменше одне поле до форми.', 'leadforms-go'));
 			$duplicates = Form_Builder::duplicate_names($schema);
 			if ($duplicates !== []) wp_die(esc_html(sprintf(__('Назви полів мають бути унікальними. Повторюються: %s', 'leadforms-go'), implode(', ', $duplicates))));
-			$translations = Form_Translations::complete($translations, $schema);
+			$translations = Form_Translations::complete($translations, $schema, array_keys($locales));
 			$resolved = Form_Translations::resolve($translations, $default_locale, $default_locale);
 			$submit_label = (string) $resolved['submit_label'];
 			$code = Form_Builder::render(Form_Translations::apply_to_schema($schema, $resolved), $submit_label, '', $button_icon);
@@ -552,7 +569,7 @@ final class Admin
 		$raw_routing_json = isset($_POST['routing_config']) && is_string($_POST['routing_config']) ? wp_unslash($_POST['routing_config']) : '';
 		if (strlen($raw_routing_json) > 131072) wp_die(esc_html__('Налаштування маршрутів завеликі.', 'leadforms-go'), '', 413);
 		$raw_routing = $raw_routing_json !== '' ? json_decode($raw_routing_json, true) : [];
-		$routing_config = Route_Config::sanitize(is_array($raw_routing) ? $raw_routing : [], $route_schema);
+		$routing_config = Route_Config::sanitize(is_array($raw_routing) ? $raw_routing : [], $route_schema, $locales);
 		$routing_valid = Route_Config::validate($routing_config, $route_schema);
 		if (is_wp_error($routing_valid)) wp_die(esc_html($routing_valid->get_error_message()), '', 422);
 		if ($name === '' || $code === '') wp_die(esc_html__('Вкажіть назву та вміст форми.', 'leadforms-go'));

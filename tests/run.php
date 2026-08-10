@@ -65,6 +65,13 @@ $locales = Form_Translations::available_locales();
 $assert(isset($locales['pl_PL'], $locales['de_DE']), 'Polish and German must be available in the form builder.');
 $assert(Form_Translations::default_fields('pl_PL')['phone']['label'] === 'Numer telefonu', 'Polish field defaults must be translated.');
 $assert(Form_Translations::default_fields('de_DE')['phone']['label'] === 'Telefonnummer', 'German field defaults must be translated.');
+$custom_translations = Form_Translations::sanitize(['fr-fr' => ['language_name' => 'Français', 'submit_label' => '', 'messages' => [], 'fields' => []]]);
+$custom_locales = Form_Translations::locales($custom_translations);
+$assert(($custom_locales['fr_FR'] ?? '') === 'Français', 'Custom locale names must be normalized and preserved.');
+$completed_custom = Form_Translations::complete($custom_translations, [['key' => 'phone', 'type' => 'tel', 'label' => 'Телефон']], ['fr_FR']);
+$assert($completed_custom['fr_FR']['submit_label'] === '' && $completed_custom['fr_FR']['fields']['phone']['label'] === '', 'Custom locales must not be filled with Ukrainian defaults.');
+$custom_route = Route_Config::sanitize(['telegram' => ['templates' => ['fr_FR' => 'Bonjour {first_name}']]], $schema, $custom_locales);
+$assert($custom_route['telegram']['templates']['fr_FR'] === 'Bonjour {first_name}', 'Custom locale Telegram templates must survive sanitization.');
 $polish_defaults = Form_Translations::resolve([], 'pl_PL', 'uk_UA');
 $assert($polish_defaults['submit_label'] === 'Wyślij', 'Polish forms without stored translations must use Polish defaults.');
 $choice_schema = [
