@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Route_Config
 {
-	public const VERSION = 3;
+	public const VERSION = 4;
 	private const STATES = ['inherit', 'enabled', 'disabled'];
 	private const SYSTEM_VARIABLES = ['page_url', 'form_name', 'submitted_at', 'locale', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
 
@@ -20,7 +20,7 @@ final class Route_Config
 				'chat_id' => '',
 				'topic_id' => 0,
 				'parse_mode' => 'plain',
-				'interactive' => true,
+				'interactive' => false,
 				'templates' => [],
 				'buttons' => [],
 			],

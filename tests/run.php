@@ -49,7 +49,7 @@ $config = Route_Config::sanitize([
 	'sheets' => ['columns' => [['header' => 'Name', 'type' => 'field', 'source' => 'first_name']]],
 ], $schema);
 $assert($config['telegram']['state'] === 'enabled', 'Route state must be preserved.');
-$assert(Route_Config::VERSION === 3, 'Route snapshots must use the interactive Telegram schema.');
+$assert(Route_Config::VERSION === 4, 'Route snapshots must use the optional Telegram status actions schema.');
 $assert($config['telegram']['profile_ids'] === [], 'Routes without profiles must keep an empty profile list.');
 $assert($config['sheets']['columns'][0]['source'] === 'first_name', 'Valid mapping must be preserved.');
 $assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'phone'], ['phone' => '+380']) === '+380', 'Mapping must resolve payload values.');
@@ -107,7 +107,7 @@ $no_contacts = Lead_Deduplicator::contact_values(['message' => 'Call me tomorrow
 $assert($no_contacts === ['phone' => '', 'email' => ''], 'Payloads without contact fields must remain unique.');
 $interactive_config = Route_Config::sanitize(['telegram' => ['interactive' => true]], $schema);
 $assert($interactive_config['telegram']['interactive'] === true, 'Interactive Telegram mode must survive route sanitization.');
-$assert(Route_Config::sanitize([], $schema)['telegram']['interactive'] === true, 'Interactive Telegram mode must be enabled for routes that do not define it.');
+$assert(Route_Config::sanitize([], $schema)['telegram']['interactive'] === false, 'Telegram status actions must be disabled for routes that do not define them.');
 $assert(Route_Config::sanitize(['telegram' => ['interactive' => false]], $schema)['telegram']['interactive'] === false, 'Interactive Telegram mode must support an explicit opt-out.');
 $buttons = Telegram_Interactions::action_buttons(42, '123456:test-token');
 $assert(count($buttons) === 2 && count($buttons[0]) === 2 && count($buttons[1]) === 2, 'Telegram interaction must expose work, callback, rejection, and spam actions.');
