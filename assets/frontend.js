@@ -1,4 +1,5 @@
 const EMOJI_PATTERN = /[\p{Extended_Pictographic}\p{Regional_Indicator}\u{FE0F}\u{20E3}]/u;
+const NAME_PATTERN = /^[\p{L}\s.'’ʼ-]+$/u;
 
 class FormValidator {
 	static errorId = 0;
@@ -9,10 +10,14 @@ class FormValidator {
 		this.fields = [...form.querySelectorAll('input, textarea, select')];
 		this.fields.forEach((field) => {
 			field.addEventListener('blur', () => this.validateField(field));
-			field.addEventListener('input', () => {
-				if (field.getAttribute('aria-invalid') === 'true') this.validateField(field);
-			});
+			field.addEventListener('input', () => this.handleInput(field));
 		});
+	}
+
+	handleInput(field) {
+		if (field.getAttribute('aria-invalid') !== 'true') return;
+		this.clearErrorMessage(field);
+		if (!this.getError(field)) this.clearError(field);
 	}
 
 	validate() {
@@ -44,6 +49,7 @@ class FormValidator {
 		if (field.required && ((['checkbox', 'radio'].includes(field.type) && !field.checked) || (!['checkbox', 'radio'].includes(field.type) && value === ''))) return this.messages.required;
 		if (!value) return '';
 		if (EMOJI_PATTERN.test(value)) return this.messages.emoji;
+		if (this.isNameField(field) && !NAME_PATTERN.test(value)) return field.dataset.errorMessage || this.messages.invalid;
 		const configured = Number.parseInt(field.dataset.maxLength || field.getAttribute('maxlength') || '', 10);
 		const maximum = Number.isFinite(configured) && configured > 0 ? configured : (field.type === 'tel' ? 32 : (field.tagName === 'TEXTAREA' ? 1000 : 255));
 		if (value.length > maximum) return this.messages.tooLong.replace('%d', String(maximum));
@@ -53,6 +59,11 @@ class FormValidator {
 		}
 		if (field.validity?.typeMismatch || field.validity?.patternMismatch) return field.dataset.errorMessage || this.messages.invalid;
 		return '';
+	}
+
+	isNameField(field) {
+		const key = `${field.name || ''} ${field.id || ''}`.toLowerCase();
+		return /(?:first[-_ ]?name|last[-_ ]?name|surname|ім['’ʼ]?я|прізвище)/u.test(key);
 	}
 
 	showError(field, message) {
@@ -71,8 +82,13 @@ class FormValidator {
 	}
 
 	clearError(field) {
-		this.errorElement(field)?.remove();
+		this.clearErrorMessage(field);
 		field.removeAttribute('aria-invalid');
+	}
+
+	clearErrorMessage(field) {
+		const error = this.errorElement(field);
+		if (error) error.remove();
 		if (field.getAttribute('aria-describedby')?.startsWith('leadforms-go-field-error-')) field.removeAttribute('aria-describedby');
 	}
 
