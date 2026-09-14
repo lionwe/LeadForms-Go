@@ -162,7 +162,8 @@ final class Form_Builder
 				continue;
 			}
 			$condition = self::condition_class((array) ($field['condition'] ?? []));
-			$lines[] = '  <div class="leadforms-go-field' . $condition . '">';
+			$width_modifier = $field['type'] === 'tel' ? ' leadforms-go-field--full-width' : '';
+			$lines[] = '  <div class="leadforms-go-field' . $width_modifier . $condition . '">';
 			if ($field['type'] === 'checkbox') {
 				$lines[] = '    <label class="leadforms-go-checkbox" for="' . esc_attr($id) . '">';
 				$lines[] = '      <input id="' . esc_attr($id) . '" type="checkbox" name="' . esc_attr($field['key']) . '" value="1"' . $required . '>';
