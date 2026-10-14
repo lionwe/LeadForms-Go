@@ -18,11 +18,11 @@ final class Statistics_Repository
 			$submission_args
 		), ARRAY_A) ?: [];
 		$all_time = $wpdb->get_row($wpdb->prepare(
-			"SELECT COUNT(*) AS total, SUM(status = 'success') AS success, SUM(created_at >= %s) AS today FROM {$tables['submissions']} WHERE is_test = 0",
+			"SELECT COUNT(*) AS total, SUM(status = 'success') AS success, SUM(created_at >= %s) AS today FROM {$tables['submissions']} WHERE is_test = 0 AND is_suspected_bot = 0",
 			$today
 		), ARRAY_A) ?: [];
 		$delivery_rows = $wpdb->get_results($wpdb->prepare(
-			"SELECT SUBSTRING_INDEX(d.connector, '__', 1) AS connector, SUM(d.updated_at >= %s AND d.status IN ('success','sent')) AS success, SUM(d.updated_at >= %s AND d.status = 'failed') AS failed, SUM(d.updated_at >= %s AND d.status = 'queued') AS queued, SUM(d.updated_at >= %s AND d.status = 'processing') AS processing, MAX(CASE WHEN d.status IN ('success','sent') THEN d.updated_at ELSE NULL END) AS last_success FROM {$tables['deliveries']} d INNER JOIN {$tables['submissions']} s ON s.id = d.submission_id AND s.is_test = 0 GROUP BY SUBSTRING_INDEX(d.connector, '__', 1)",
+			"SELECT SUBSTRING_INDEX(d.connector, '__', 1) AS connector, SUM(d.updated_at >= %s AND d.status IN ('success','sent')) AS success, SUM(d.updated_at >= %s AND d.status = 'failed') AS failed, SUM(d.updated_at >= %s AND d.status = 'queued') AS queued, SUM(d.updated_at >= %s AND d.status = 'processing') AS processing, MAX(CASE WHEN d.status IN ('success','sent') THEN d.updated_at ELSE NULL END) AS last_success FROM {$tables['deliveries']} d INNER JOIN {$tables['submissions']} s ON s.id = d.submission_id AND s.is_test = 0 AND s.is_suspected_bot = 0 GROUP BY SUBSTRING_INDEX(d.connector, '__', 1)",
 			$today,
 			$today,
 			$today,
@@ -112,7 +112,7 @@ final class Statistics_Repository
 	/** @return array{0:string,1:array} */
 	private function submission_filter(array $filters, string $from, string $to): array
 	{
-		$conditions = ['s.is_test = 0', 's.created_at >= %s', 's.created_at <= %s'];
+		$conditions = ['s.is_test = 0', 's.is_suspected_bot = 0', 's.created_at >= %s', 's.created_at <= %s'];
 		$args = [$from . ' 00:00:00', $to . ' 23:59:59'];
 		if (! empty($filters['form_id'])) {
 			$conditions[] = 's.form_id = %d';

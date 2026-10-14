@@ -129,18 +129,18 @@ final class Route_Config
 		return self::sanitize($config, Form_Builder::sanitize_schema($schema), $locales);
 	}
 
-	public static function snapshot(array $config, string $connector, array $context = []): array
+	public static function snapshot(array $config, string $connector, array $context = [], bool $allow_global_disabled = false): array
 	{
 		$connector = sanitize_key($connector);
 		$route = is_array($config[$connector] ?? null) ? $config[$connector] : [];
-		return self::snapshot_route($connector, $route, $context, 'default');
+		return self::snapshot_route($connector, $route, $context, 'default', $allow_global_disabled);
 	}
 
-	public static function snapshot_route(string $connector, array $route, array $context = [], string $destination_id = 'default'): array
+	public static function snapshot_route(string $connector, array $route, array $context = [], string $destination_id = 'default', bool $allow_global_disabled = false): array
 	{
 		$connector = sanitize_key($connector);
 		$global = Settings::section($connector);
-		$route['state'] = self::is_enabled($connector, $route) ? 'enabled' : 'disabled';
+		$route['state'] = self::is_enabled($connector, $route, $allow_global_disabled) ? 'enabled' : 'disabled';
 		$uses_profile = ! empty($route['profile_id']);
 		if (! $uses_profile && $connector === 'telegram' && empty($route['chat_id'])) $route['chat_id'] = sanitize_text_field((string) ($global['chat_id'] ?? ''));
 		if (! $uses_profile && $connector === 'sheets') {
@@ -152,6 +152,7 @@ final class Route_Config
 			'version' => self::VERSION,
 			'connector' => $connector,
 			'destination_id' => sanitize_key($destination_id) ?: 'default',
+			'allow_global_disabled' => $allow_global_disabled,
 			'route' => $route,
 			'context' => [
 				'form_name' => sanitize_text_field((string) ($context['form_name'] ?? '')),
@@ -160,12 +161,13 @@ final class Route_Config
 		];
 	}
 
-	public static function destinations(array $config, string $connector): array
+	public static function destinations(array $config, string $connector, bool $allow_global_disabled = false): array
 	{
 		$connector = sanitize_key($connector);
+		if (empty(Settings::section($connector)['enabled']) && ! $allow_global_disabled) return [];
 		$route = is_array($config[$connector] ?? null) ? $config[$connector] : [];
 		$destinations = [];
-		if (self::is_enabled($connector, $route)) $destinations[] = ['id' => 'default', 'route' => $route];
+		if ($allow_global_disabled || self::is_enabled($connector, $route)) $destinations[] = ['id' => 'default', 'route' => $route];
 		foreach ((array) ($route['profile_ids'] ?? []) as $profile_id) {
 			$profile = Connection_Profiles::find((string) $profile_id, $connector);
 			if (! $profile) continue;
@@ -186,12 +188,13 @@ final class Route_Config
 		return $route;
 	}
 
-	public static function is_enabled(string $connector, array $route): bool
+	public static function is_enabled(string $connector, array $route, bool $allow_global_disabled = false): bool
 	{
 		$state = self::state($route['state'] ?? 'inherit');
-		if ($state === 'enabled') return true;
 		if ($state === 'disabled') return false;
-		return ! empty(Settings::section($connector)['enabled']);
+		$globally_enabled = ! empty(Settings::section($connector)['enabled']);
+		if (! $globally_enabled && ! $allow_global_disabled) return false;
+		return $state === 'enabled' || $globally_enabled;
 	}
 
 	public static function available_variables(array $schema): array

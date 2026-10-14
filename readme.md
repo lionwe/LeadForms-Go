@@ -24,7 +24,7 @@ For visual forms, one shared field structure can contain translations for multip
 
 Submissions are stored locally before connector jobs are added to the delivery queue. After the server accepts a public submission, a short-lived signed browser request starts delivery immediately without keeping the form waiting for external connectors. WP-Cron remains the durable fallback, and temporary network or server failures are retried with exponential backoff. The History screen provides delivery filters, attempt timelines, and manual retry controls.
 
-If the WordPress database is moved to another domain, LeadForms Go detects the change, disables integrations, and cancels active deliveries. This prevents inherited queued submissions from being sent to the previous site's destinations. Existing history is retained for administrator review and can be removed manually when appropriate.
+If the WordPress database is moved to another domain, LeadForms Go detects the change, disables integrations, and cancels active deliveries. The global integration switch blocks all form routes and connection profiles, and queued jobs check it again before sending. LeadForms Go immediately tries to send a Telegram alert to the configured global chat (or the first configured Telegram profile), with WP-Cron retries up to three attempts if needed. The dashboard records the detection time, cancelled delivery count, and alert result. Existing history is retained for administrator review.
 
 For production sites with low traffic or `DISABLE_WP_CRON` enabled, configure a real system cron request to WordPress cron. The dashboard reports stalled or unscheduled queue work.
 
@@ -32,13 +32,17 @@ If the WP-Cron loopback request fails, an overdue delivery can be processed by a
 
 ## Per-form integrations
 
-Each form has an Integrations tab for Telegram, Google Sheets, and CRM routes. A route can inherit the global connection, override its destination, or be disabled for that form. Reusable connection profiles can add multiple destinations of the same type without copying secrets into forms. New delivery jobs store a versioned route snapshot, so retries keep the original template and mapping.
+Each form has an Integrations tab for Telegram, Google Sheets, and CRM routes. A route can inherit the global connection, override its destination, or be disabled for that form. The global switch is a master switch: turning it off disables destinations across every form and profile. Reusable connection profiles can add multiple destinations of the same type without copying secrets into forms. New delivery jobs store a versioned route snapshot, so retries keep the original template and mapping while still honoring the global switch.
 
-Telegram supports localized plain text, HTML, and MarkdownV2 templates, topics, and up to five inline buttons per locale. Google Sheets supports sheet discovery, sheet creation, visual column mapping, raw append, and exact email or phone update-or-append. Route tests create diagnostic submissions that are excluded from dashboard statistics.
+The form editor also shows real delivery totals, queued and failed deliveries, and the time of the last successful delivery for each connector. These delivery results are separate from configuration checks, which may only validate saved settings. Submissions containing explicit test markers or placeholder zero numbers are classified as test entries; very short, repeated, or sequential phone digits are marked as suspected bot submissions.
+
+Telegram supports localized plain text, HTML, and MarkdownV2 templates, topics, and up to five inline buttons per locale. Google Sheets supports sheet discovery, sheet creation, visual column mapping, raw append, and exact email or phone update-or-append. Route tests create diagnostic submissions that are excluded from dashboard statistics. The plugin also flags explicit test markers and suspicious placeholder phone numbers, keeps those submissions in history with a classification filter, and excludes them from normal analytics. Existing submissions are classified in background batches.
 
 LeadForms Go identifies repeat contacts locally from keyed fingerprints of normalized phone numbers and email addresses. Repeat submissions are never blocked and continue through every configured destination. The dashboard can filter by date, form, UTM source, and campaign while separating unique contacts, repeat submissions, and spam.
 
 Telegram routes can optionally enable interactive triage. The bot adds “Взяти в роботу” and confirmed “Спам” actions and sends one reminder after 30 minutes while a submission remains new. Incoming actions require a public HTTPS REST endpoint, a Telegram webhook secret, a matching configured chat, and signed callback data. Existing third-party webhooks are never replaced unless the administrator explicitly requests it during the connection test.
+
+When a manager already owns a submission, another manager can request a handoff through Telegram. The request is posted in the chat and linked to the submission message. Only the current manager's Telegram account can approve or reject it; concurrent requests cannot overwrite the assignment. Only the current owner can change the status or release the assignment.
 
 ## Security
 

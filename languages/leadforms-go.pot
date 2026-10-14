@@ -1215,3 +1215,135 @@ msgstr ""
 #: includes/class-admin.php
 msgid "Можна вибрати лише SVG-вкладення з медіабібліотеки. Інші формати будуть відхилені."
 msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Глобальний перемикач інтеграції в налаштуваннях — загальний вимикач для всіх форм і профілів. Ручне тестування маршруту надсилає діагностичне повідомлення навіть коли глобальний перемикач вимкнений."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Класифікація"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Тестові"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Підозра на бота"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "У тексті є тестовий маркер"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Номер схожий на тестовий"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Номер схожий на автоматично згенерований"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Тестова заявка з перевірки інтеграції"
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Виявлено перенесення сайту з %1$s на %2$s (%4$s). Інтеграції вимкнено, активні доставки скасовано: %3$d. Збережені токени та інші реквізити не видалено — перевірте їх і повторно увімкніть потрібні інтеграції в налаштуваннях."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Сповіщення надіслано в Telegram."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Не вдалося надіслати сповіщення в Telegram."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Telegram-чат для сповіщення не налаштований."
+msgstr ""
+
+#: includes/class-admin.php
+msgid "Сповіщення в Telegram очікує відправлення."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "<b>LeadForms Go: інтеграції вимкнено</b>\n\nВиявлено зміну домену сайту: %1$s → %2$s.\nАктивні доставки скасовано: %3$d.\n\nПерейдіть у <a href=\"%4$s\">налаштування інтеграцій</a> в адмінці WordPress і ввімкніть їх знову."
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Стан доставок для цієї форми"
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Дані показують фактичні результати доставок, а не лише наявність налаштувань. Статус «Увімкнено» не гарантує доступність стороннього сервісу."
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Успішні доставки"
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Помилки"
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Остання успішна"
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Увімкнено для форми"
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Успадковано глобальне"
+msgstr ""
+
+#: includes/class-admin-integrations.php
+msgid "Ще не було"
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Заявка вже у менеджера %s. Йому надіслано запит на передачу."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Запит на передачу вже очікує рішення поточного менеджера."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Погодити передачу"
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Відхилити передачу"
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Передачу погоджено. Тепер відповідальний: %s."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Запит на передачу відхилено."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Погодити або відхилити передачу може лише поточний менеджер."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Запит на передачу вже неактуальний."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Менеджер %1$s просить передати заявку #%2$d. Поточний відповідальний: %3$s. Рішення доступне на початковому повідомленні."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Скинути статус може лише поточний відповідальний."
+msgstr ""
+
+#: includes/class-telegram-interactions.php
+msgid "Змінювати статус може лише поточний відповідальний. Запросіть передачу заявки."
+msgstr ""

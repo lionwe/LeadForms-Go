@@ -14,6 +14,8 @@ require dirname(__DIR__) . '/includes/class-lead-deduplicator.php';
 require dirname(__DIR__) . '/includes/class-telegram-interactions.php';
 require dirname(__DIR__) . '/includes/class-telegram-message-formatter.php';
 require dirname(__DIR__) . '/includes/class-submission-presenter.php';
+require dirname(__DIR__) . '/includes/class-database.php';
+require dirname(__DIR__) . '/includes/class-submission-classifier.php';
 
 use LeadFormsGo\Google_Sheets_Service;
 use LeadFormsGo\Route_Config;
@@ -26,6 +28,8 @@ use LeadFormsGo\Telegram_Interactions;
 use LeadFormsGo\Telegram_Message_Formatter;
 use LeadFormsGo\Repositories;
 use LeadFormsGo\Submission_Presenter;
+use LeadFormsGo\Database;
+use LeadFormsGo\Submission_Classifier;
 
 $failures = [];
 $assert = static function (bool $condition, string $message) use (&$failures): void {
@@ -35,6 +39,24 @@ $assert = static function (bool $condition, string $message) use (&$failures): v
 $assert(Google_Sheets_Service::column_letter(1) === 'A', 'Column 1 must be A.');
 $assert(Google_Sheets_Service::column_letter(27) === 'AA', 'Column 27 must be AA.');
 $assert(Google_Sheets_Service::a1_range("Sales Q1's", 'A1:C1') === "'Sales Q1''s'!A1:C1", 'A1 sheet names must be quoted.');
+
+$same_site_origin = new ReflectionMethod(Database::class, 'same_site_origin');
+$assert($same_site_origin->invoke(null, 'http://example.com', 'https://example.com/') === true, 'HTTP to HTTPS changes must not disable integrations.');
+$assert($same_site_origin->invoke(null, 'https://example.com', 'https://www.example.com') === false, 'A different hostname must be treated as a site transfer.');
+$assert($same_site_origin->invoke(null, 'https://example.com/old', 'https://example.com/new') === false, 'A different WordPress path must be treated as a site transfer.');
+
+$test_phone = Submission_Classifier::classify(['phone' => '000000']);
+$assert($test_phone['is_test'] && $test_phone['is_suspected_bot'] && in_array('zero_phone', $test_phone['reasons'], true), 'All-zero phone numbers must be marked as test and suspected bot submissions.');
+$test_marker = Submission_Classifier::classify(['comment' => 'Це тестова заявка']);
+$assert($test_marker['is_test'] && ! $test_marker['is_suspected_bot'], 'Explicit test markers in free text must mark a submission as test.');
+$normal_submission = Submission_Classifier::classify(['email' => 'test@example.com', 'phone' => '+380991234567']);
+$assert(! $normal_submission['is_test'] && ! $normal_submission['is_suspected_bot'], 'Email addresses containing "test" and ordinary phone numbers must not be misclassified.');
+$bot_phone = Submission_Classifier::classify(['phone' => '1111111111']);
+$assert(! $bot_phone['is_test'] && $bot_phone['is_suspected_bot'], 'Repeated-digit phone numbers must be marked as suspected bot submissions.');
+$sequential_bot_phone = Submission_Classifier::classify(['phone' => '+3801234567890']);
+$assert($sequential_bot_phone['is_suspected_bot'], 'Phone numbers containing an obvious ascending digit sequence must be marked as suspected bot submissions.');
+$schema_phone = Submission_Classifier::classify(['contact' => '12345'], [['key' => 'contact', 'type' => 'tel', 'label' => 'Зателефонуйте']]);
+$assert($schema_phone['is_suspected_bot'], 'Phone fields with custom keys from the form schema must be classified.');
 
 $rendered = Telegram_Template::render('Hello {first_name}', 'MarkdownV2', ['first_name' => 'A_B']);
 $assert($rendered === 'Hello A\\_B', 'Markdown variables must be escaped.');
@@ -105,6 +127,11 @@ $assert($telegram_variables['product'] === 'Unihum', 'Telegram template variable
 $assert($telegram_variables['page_url'] === 'https://example.com', 'Non-form Telegram variables must remain unchanged.');
 $assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'product'], ['product' => 'unihum']) === 'unihum', 'Connector mappings must keep raw option values.');
 $snapshot = Route_Config::snapshot($config, 'telegram', ['form_name' => 'Original', 'submitted_at' => '2026-07-13 10:00:00']);
+$assert(! Route_Config::is_enabled('telegram', ['state' => 'enabled']), 'A globally disabled connector must remain disabled even when a form route is explicitly enabled.');
+$assert(Route_Config::destinations(['telegram' => ['state' => 'enabled', 'profile_ids' => ['profile_1']]], 'telegram') === [], 'A globally disabled connector must not create deliveries for form routes or profiles.');
+$assert(Route_Config::is_enabled('telegram', ['state' => 'enabled'], true), 'An explicit admin route test may bypass the global integration switch.');
+$test_snapshot = Route_Config::snapshot(['telegram' => ['state' => 'enabled']], 'telegram', [], true);
+$assert(! empty($test_snapshot['allow_global_disabled']) && $test_snapshot['route']['state'] === 'enabled', 'A route test snapshot must preserve its explicit global-switch override.');
 $snapshot_route = Route_Config::route_from_snapshot($snapshot, 'telegram');
 $assert($snapshot_route['_context']['form_name'] === 'Original', 'Route snapshot context must be immutable.');
 $contacts = Lead_Deduplicator::contact_values(['contact_email' => ' TEST@Example.COM ', 'phone' => '+38 (099) 111-22-33']);

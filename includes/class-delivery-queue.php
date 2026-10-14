@@ -33,9 +33,11 @@ final class Delivery_Queue
 		wp_clear_scheduled_hook(self::HOOK);
 		wp_clear_scheduled_hook('leadforms_go_cleanup_submissions');
 		wp_clear_scheduled_hook('leadforms_go_dedup_backfill');
+		wp_clear_scheduled_hook('leadforms_go_classification_backfill');
 		wp_clear_scheduled_hook(Telegram_Interactions::REMINDER_HOOK);
 		delete_option(self::LOCK_OPTION);
 		delete_option('leadforms_go_dedup_backfill_lock');
+		delete_option('leadforms_go_classification_backfill_lock');
 	}
 
 	public function queue_submission(int $submission_id): int
@@ -85,7 +87,7 @@ final class Delivery_Queue
 			'form_name' => is_array($form) ? (string) ($form['name'] ?? '') : '',
 			'submitted_at' => is_array($submission) ? (string) ($submission['created_at'] ?? '') : '',
 		];
-		$delivery_id = Repositories::create_delivery($submission_id, $connector, Route_Config::snapshot($config, $connector, $context));
+		$delivery_id = Repositories::create_delivery($submission_id, $connector, Route_Config::snapshot($config, $connector, $context, true));
 		if ($delivery_id <= 0) return 0;
 		update_option(self::PENDING_OPTION, 1, false);
 		$this->pending = true;
@@ -112,7 +114,7 @@ final class Delivery_Queue
 				$snapshot = is_array($snapshot) ? $snapshot : [];
 				$route = Route_Config::route_from_snapshot($snapshot, $key);
 				$legacy_delivery = $snapshot === [];
-				$enabled = $legacy_delivery ? (isset($connectors[$key]) && $connectors[$key]->is_enabled()) : Route_Config::is_enabled($key, $route);
+				$enabled = $legacy_delivery ? (isset($connectors[$key]) && $connectors[$key]->is_enabled()) : Route_Config::is_enabled($key, $route, ! empty($snapshot['allow_global_disabled']));
 				if (! isset($connectors[$key]) || ! $enabled) {
 					Repositories::cancel_delivery($delivery_id, __('Інтеграція вимкнена або недоступна.', 'leadforms-go'));
 					continue;

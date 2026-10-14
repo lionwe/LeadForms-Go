@@ -53,7 +53,7 @@ final class Lead_Deduplicator
 		$table = Database::tables()['submissions'];
 		try {
 			$rows = $wpdb->get_results(
-				"SELECT id, form_id, payload FROM {$table} WHERE dedup_indexed = 0 AND is_test = 0 AND lead_state <> 'spam' ORDER BY id ASC LIMIT 200",
+				"SELECT id, form_id, payload FROM {$table} WHERE dedup_indexed = 0 AND is_test = 0 AND is_suspected_bot = 0 AND lead_state <> 'spam' ORDER BY id ASC LIMIT 200",
 				ARRAY_A
 			) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			foreach ($rows as $row) {
@@ -143,7 +143,7 @@ final class Lead_Deduplicator
 			$matches[] = 'email_fingerprint = %s';
 			$args[] = $email;
 		}
-		$sql = "SELECT id FROM {$table} WHERE is_test = 0 AND lead_state <> 'spam' AND dedup_indexed = 1 AND (" . implode(' OR ', $matches) . ')';
+		$sql = "SELECT id FROM {$table} WHERE is_test = 0 AND is_suspected_bot = 0 AND lead_state <> 'spam' AND dedup_indexed = 1 AND (" . implode(' OR ', $matches) . ')';
 		if ($before_id > 0) {
 			$sql .= ' AND id < %d';
 			$args[] = $before_id;

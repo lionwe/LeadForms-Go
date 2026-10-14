@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Database
 {
-	private const SCHEMA_VERSION = '1.8.3';
+	private const SCHEMA_VERSION = '1.8.5';
 	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
 	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
 
@@ -84,6 +84,8 @@ final class Database
 			locale varchar(20) NOT NULL DEFAULT 'uk_UA',
 			request_id varchar(64) DEFAULT NULL,
 			is_test tinyint(1) unsigned NOT NULL DEFAULT 0,
+			is_suspected_bot tinyint(1) unsigned NOT NULL DEFAULT 0,
+			classification_reasons varchar(255) NOT NULL DEFAULT '',
 			landing_page text NOT NULL,
 			document_referrer text NOT NULL,
 			utm_source varchar(255) NOT NULL DEFAULT '',
@@ -100,6 +102,13 @@ final class Database
 			status_changed_by varchar(255) NOT NULL DEFAULT '',
 			status_changed_by_telegram_id varchar(32) NOT NULL DEFAULT '',
 			status_changed_at datetime DEFAULT NULL,
+			assigned_to varchar(255) NOT NULL DEFAULT '',
+			assigned_to_telegram_id varchar(32) NOT NULL DEFAULT '',
+			assigned_by varchar(255) NOT NULL DEFAULT '',
+			assigned_by_telegram_id varchar(32) NOT NULL DEFAULT '',
+			transfer_requested_by varchar(255) NOT NULL DEFAULT '',
+			transfer_requested_by_telegram_id varchar(32) NOT NULL DEFAULT '',
+			transfer_requested_at datetime DEFAULT NULL,
 			phone_fingerprint char(64) NOT NULL DEFAULT '',
 			email_fingerprint char(64) NOT NULL DEFAULT '',
 			duplicate_of bigint(20) unsigned DEFAULT NULL,
@@ -120,6 +129,7 @@ final class Database
 			KEY dedup_indexed (dedup_indexed),
 			KEY created_at (created_at)
 		) $collate;");
+		$wpdb->query("UPDATE {$tables['submissions']} SET assigned_to = status_changed_by, assigned_to_telegram_id = status_changed_by_telegram_id, assigned_by = status_changed_by, assigned_by_telegram_id = status_changed_by_telegram_id WHERE lead_state = 'acknowledged' AND assigned_to_telegram_id = '' AND status_changed_by_telegram_id <> ''"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		dbDelta("CREATE TABLE {$tables['deliveries']} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			submission_id bigint(20) unsigned NOT NULL,
@@ -175,6 +185,7 @@ final class Database
 		self::migrate_form_translations();
 		self::grant_capabilities();
 		update_option('leadforms_go_schema_version', self::SCHEMA_VERSION, false);
+		Submission_Classifier::schedule_backfill();
 		delete_option('leadforms_go_dedup_backfill_complete');
 		Lead_Deduplicator::schedule_backfill();
 		$queued = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$tables['deliveries']} WHERE status = 'queued'"); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -296,6 +307,10 @@ final class Database
 			return;
 		}
 		if (hash_equals($previous, $current)) return;
+		if (self::same_site_origin($previous, $current)) {
+			update_option(self::SITE_ORIGIN_OPTION, $current, false);
+			return;
+		}
 
 		Settings::disable_integrations();
 		$cancelled = Repositories::cancel_active_deliveries(__('Доставку скасовано після перенесення сайту. Перевірте інтеграції перед повторною відправкою.', 'leadforms-go'));
@@ -306,12 +321,34 @@ final class Database
 			'current' => $current,
 			'cancelled' => $cancelled,
 			'detected_at' => time(),
+			'telegram_alert_status' => 'pending',
+			'telegram_alert_attempts' => 0,
 		], false);
+		if (! wp_next_scheduled(Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK)) {
+			wp_schedule_single_event(time() + 30, Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK);
+		}
+		Telegram_Interactions::send_site_transfer_alert();
 	}
 
 	private static function site_origin(): string
 	{
 		return untrailingslashit(strtolower(esc_url_raw(home_url('/'))));
+	}
+
+	private static function same_site_origin(string $previous, string $current): bool
+	{
+		$identity = static function (string $url): string {
+			$host = wp_parse_url($url, PHP_URL_HOST);
+			if (! is_string($host) || $host === '') return '';
+			$port = wp_parse_url($url, PHP_URL_PORT);
+			$path = wp_parse_url($url, PHP_URL_PATH);
+			$path = is_string($path) ? '/' . trim($path, '/') : '/';
+			return strtolower(rtrim($host, '.')) . (is_int($port) ? ':' . $port : '') . $path;
+		};
+
+		$previous_identity = $identity($previous);
+		$current_identity = $identity($current);
+		return $previous_identity !== '' && $current_identity !== '' && hash_equals($previous_identity, $current_identity);
 	}
 
 	private static function table_exists(string $table): bool

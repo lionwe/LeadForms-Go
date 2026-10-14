@@ -28,6 +28,8 @@ final class Admin_Integrations
 			<header class="lfg-integrations__heading">
 				<div><h2><?php esc_html_e('Інтеграції форми', 'leadforms-go'); ?></h2><p><?php esc_html_e('Виберіть, куди надсилати нові заявки, і налаштуйте кожен канал окремо.', 'leadforms-go'); ?></p></div>
 			</header>
+			<p class="lfg-route-note"><?php esc_html_e('Глобальний перемикач інтеграції в налаштуваннях — загальний вимикач для всіх форм і профілів. Ручне тестування маршруту надсилає діагностичне повідомлення навіть коли глобальний перемикач вимкнений.', 'leadforms-go'); ?></p>
+			<?php $this->render_delivery_health($form_id, $config); ?>
 			<textarea hidden name="routing_config" data-lfg-routing-config><?php echo esc_textarea((string) wp_json_encode($config, JSON_UNESCAPED_UNICODE)); ?></textarea>
 			<?php $this->test_data($schema); ?>
 
@@ -111,7 +113,7 @@ final class Admin_Integrations
 		$connectors = Connectors::all();
 		$connector = $connectors[$connector_key] ?? null;
 		if (! $connector instanceof Contextual_Connector_Interface) wp_send_json_error(['message' => __('Маршрут недоступний.', 'leadforms-go')], 400);
-		$destinations = Route_Config::destinations($config, $connector_key);
+		$destinations = Route_Config::destinations($config, $connector_key, true);
 		$route = (array) ($destinations[0]['route'] ?? ($config[$connector_key] ?? []));
 		$route_valid = $connector->validate_route(is_array($route) ? $route : []);
 		if (is_wp_error($route_valid)) wp_send_json_error(['message' => $route_valid->get_error_message()], 422);
@@ -218,6 +220,38 @@ final class Admin_Integrations
 	{
 		if ($show_test) echo '<div class="lfg-route-test"><button type="button" class="button button-primary" data-lfg-test-route="' . esc_attr($key) . '">' . esc_html__('Надіслати тестову заявку', 'leadforms-go') . '</button><span data-lfg-route-result aria-live="polite"></span></div>';
 		echo '</div></article>';
+	}
+
+	private function render_delivery_health(int $form_id, array $config): void
+	{
+		if ($form_id <= 0) return;
+		global $wpdb;
+		$tables = Database::tables();
+		$rows = $wpdb->get_results($wpdb->prepare(
+			"SELECT SUBSTRING_INDEX(d.connector, '__', 1) AS connector, SUM(d.status IN ('sent','success')) AS successful, SUM(d.status = 'failed') AS failed, SUM(d.status = 'queued') AS queued, SUM(d.status = 'processing') AS processing, SUM(d.status = 'cancelled') AS cancelled, MAX(CASE WHEN d.status IN ('sent','success') THEN d.updated_at ELSE NULL END) AS last_success FROM {$tables['deliveries']} d INNER JOIN {$tables['submissions']} s ON s.id = d.submission_id WHERE s.form_id = %d AND s.is_test = 0 AND s.is_suspected_bot = 0 GROUP BY SUBSTRING_INDEX(d.connector, '__', 1)",
+			$form_id
+		), ARRAY_A) ?: [];
+		$health = [];
+		foreach ($rows as $row) $health[sanitize_key((string) ($row['connector'] ?? ''))] = $row;
+		$labels = ['telegram' => 'Telegram', 'sheets' => 'Google Sheets', 'crm' => 'CRM G-PLUS'];
+		?>
+		<details class="lfg-route-health">
+			<summary><?php esc_html_e('Стан доставок для цієї форми', 'leadforms-go'); ?></summary>
+			<p class="description"><?php esc_html_e('Дані показують фактичні результати доставок, а не лише наявність налаштувань. Статус «Увімкнено» не гарантує доступність стороннього сервісу.', 'leadforms-go'); ?></p>
+			<table class="widefat striped"><thead><tr><th><?php esc_html_e('Інтеграція', 'leadforms-go'); ?></th><th><?php esc_html_e('Режим', 'leadforms-go'); ?></th><th><?php esc_html_e('Успішні доставки', 'leadforms-go'); ?></th><th><?php esc_html_e('Помилки', 'leadforms-go'); ?></th><th><?php esc_html_e('У черзі', 'leadforms-go'); ?></th><th><?php esc_html_e('Обробляється', 'leadforms-go'); ?></th><th><?php esc_html_e('Скасовано', 'leadforms-go'); ?></th><th><?php esc_html_e('Остання успішна', 'leadforms-go'); ?></th></tr></thead><tbody>
+			<?php foreach ($labels as $key => $label) :
+				$route_state = (string) ($config[$key]['state'] ?? 'inherit');
+				$enabled = Route_Config::is_enabled($key, $config[$key] ?? []);
+				$row = $health[$key] ?? [];
+				$mode = ! $enabled ? __('Вимкнено', 'leadforms-go') : ($route_state === 'enabled' ? __('Увімкнено для форми', 'leadforms-go') : __('Успадковано глобальне', 'leadforms-go'));
+				$last_success = (string) ($row['last_success'] ?? '');
+				$last_success_date = $last_success !== '' ? \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $last_success, wp_timezone()) : false;
+				?>
+				<tr><td><?php echo esc_html($label); ?></td><td><?php echo esc_html($mode); ?></td><td><?php echo esc_html((string) (int) ($row['successful'] ?? 0)); ?></td><td><?php echo esc_html((string) (int) ($row['failed'] ?? 0)); ?></td><td><?php echo esc_html((string) (int) ($row['queued'] ?? 0)); ?></td><td><?php echo esc_html((string) (int) ($row['processing'] ?? 0)); ?></td><td><?php echo esc_html((string) (int) ($row['cancelled'] ?? 0)); ?></td><td><?php echo $last_success_date instanceof \DateTimeImmutable ? esc_html($last_success_date->format('Y-m-d H:i')) : esc_html__('Ще не було', 'leadforms-go'); ?></td></tr>
+			<?php endforeach; ?>
+			</tbody></table>
+		</details>
+		<?php
 	}
 
 	private function profile_selector(string $connector, array $selected): string
