@@ -23,6 +23,9 @@ final class Plugin
 		$this->queue->boot();
 		Telegram_Interactions::boot();
 		add_action('leadforms_go_dedup_backfill', [Lead_Deduplicator::class, 'backfill']);
+		add_action('admin_init', [Lead_Deduplicator::class, 'maybe_process_fallback'], 1);
+		add_action('leadforms_go_classification_backfill', [Submission_Classifier::class, 'backfill']);
+		add_action('admin_init', [Submission_Classifier::class, 'maybe_process_fallback'], 2);
 		add_action('leadforms_go_cleanup_submissions', [$this, 'cleanup_submissions']);
 		add_filter('wp_privacy_personal_data_exporters', [Privacy::class, 'register_exporter']);
 		add_filter('wp_privacy_personal_data_erasers', [Privacy::class, 'register_eraser']);

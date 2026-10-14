@@ -12,6 +12,10 @@ require dirname(__DIR__) . '/includes/class-submission-validator.php';
 require dirname(__DIR__) . '/includes/class-result.php';
 require dirname(__DIR__) . '/includes/class-lead-deduplicator.php';
 require dirname(__DIR__) . '/includes/class-telegram-interactions.php';
+require dirname(__DIR__) . '/includes/class-telegram-message-formatter.php';
+require dirname(__DIR__) . '/includes/class-submission-presenter.php';
+require dirname(__DIR__) . '/includes/class-database.php';
+require dirname(__DIR__) . '/includes/class-submission-classifier.php';
 
 use LeadFormsGo\Google_Sheets_Service;
 use LeadFormsGo\Route_Config;
@@ -21,6 +25,11 @@ use LeadFormsGo\Submission_Validator;
 use LeadFormsGo\Form_Translations;
 use LeadFormsGo\Lead_Deduplicator;
 use LeadFormsGo\Telegram_Interactions;
+use LeadFormsGo\Telegram_Message_Formatter;
+use LeadFormsGo\Repositories;
+use LeadFormsGo\Submission_Presenter;
+use LeadFormsGo\Database;
+use LeadFormsGo\Submission_Classifier;
 
 $failures = [];
 $assert = static function (bool $condition, string $message) use (&$failures): void {
@@ -30,6 +39,24 @@ $assert = static function (bool $condition, string $message) use (&$failures): v
 $assert(Google_Sheets_Service::column_letter(1) === 'A', 'Column 1 must be A.');
 $assert(Google_Sheets_Service::column_letter(27) === 'AA', 'Column 27 must be AA.');
 $assert(Google_Sheets_Service::a1_range("Sales Q1's", 'A1:C1') === "'Sales Q1''s'!A1:C1", 'A1 sheet names must be quoted.');
+
+$same_site_origin = new ReflectionMethod(Database::class, 'same_site_origin');
+$assert($same_site_origin->invoke(null, 'http://example.com', 'https://example.com/') === true, 'HTTP to HTTPS changes must not disable integrations.');
+$assert($same_site_origin->invoke(null, 'https://example.com', 'https://www.example.com') === false, 'A different hostname must be treated as a site transfer.');
+$assert($same_site_origin->invoke(null, 'https://example.com/old', 'https://example.com/new') === false, 'A different WordPress path must be treated as a site transfer.');
+
+$test_phone = Submission_Classifier::classify(['phone' => '000000']);
+$assert($test_phone['is_test'] && $test_phone['is_suspected_bot'] && in_array('zero_phone', $test_phone['reasons'], true), 'All-zero phone numbers must be marked as test and suspected bot submissions.');
+$test_marker = Submission_Classifier::classify(['comment' => 'Це тестова заявка']);
+$assert($test_marker['is_test'] && ! $test_marker['is_suspected_bot'], 'Explicit test markers in free text must mark a submission as test.');
+$normal_submission = Submission_Classifier::classify(['email' => 'test@example.com', 'phone' => '+380991234567']);
+$assert(! $normal_submission['is_test'] && ! $normal_submission['is_suspected_bot'], 'Email addresses containing "test" and ordinary phone numbers must not be misclassified.');
+$bot_phone = Submission_Classifier::classify(['phone' => '1111111111']);
+$assert(! $bot_phone['is_test'] && $bot_phone['is_suspected_bot'], 'Repeated-digit phone numbers must be marked as suspected bot submissions.');
+$sequential_bot_phone = Submission_Classifier::classify(['phone' => '+3801234567890']);
+$assert($sequential_bot_phone['is_suspected_bot'], 'Phone numbers containing an obvious ascending digit sequence must be marked as suspected bot submissions.');
+$schema_phone = Submission_Classifier::classify(['contact' => '12345'], [['key' => 'contact', 'type' => 'tel', 'label' => 'Зателефонуйте']]);
+$assert($schema_phone['is_suspected_bot'], 'Phone fields with custom keys from the form schema must be classified.');
 
 $rendered = Telegram_Template::render('Hello {first_name}', 'MarkdownV2', ['first_name' => 'A_B']);
 $assert($rendered === 'Hello A\\_B', 'Markdown variables must be escaped.');
@@ -44,7 +71,7 @@ $config = Route_Config::sanitize([
 	'sheets' => ['columns' => [['header' => 'Name', 'type' => 'field', 'source' => 'first_name']]],
 ], $schema);
 $assert($config['telegram']['state'] === 'enabled', 'Route state must be preserved.');
-$assert(Route_Config::VERSION === 3, 'Route snapshots must use the interactive Telegram schema.');
+$assert(Route_Config::VERSION === 4, 'Route snapshots must use the optional Telegram status actions schema.');
 $assert($config['telegram']['profile_ids'] === [], 'Routes without profiles must keep an empty profile list.');
 $assert($config['sheets']['columns'][0]['source'] === 'first_name', 'Valid mapping must be preserved.');
 $assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'phone'], ['phone' => '+380']) === '+380', 'Mapping must resolve payload values.');
@@ -60,9 +87,51 @@ $locales = Form_Translations::available_locales();
 $assert(isset($locales['pl_PL'], $locales['de_DE']), 'Polish and German must be available in the form builder.');
 $assert(Form_Translations::default_fields('pl_PL')['phone']['label'] === 'Numer telefonu', 'Polish field defaults must be translated.');
 $assert(Form_Translations::default_fields('de_DE')['phone']['label'] === 'Telefonnummer', 'German field defaults must be translated.');
+$custom_translations = Form_Translations::sanitize(['fr-fr' => ['language_name' => 'Français', 'submit_label' => '', 'messages' => [], 'fields' => []]]);
+$custom_locales = Form_Translations::locales($custom_translations);
+$assert(($custom_locales['fr_FR'] ?? '') === 'Français', 'Custom locale names must be normalized and preserved.');
+$completed_custom = Form_Translations::complete($custom_translations, [['key' => 'phone', 'type' => 'tel', 'label' => 'Телефон']], ['fr_FR']);
+$assert($completed_custom['fr_FR']['submit_label'] === '' && $completed_custom['fr_FR']['fields']['phone']['label'] === '', 'Custom locales must not be filled with Ukrainian defaults.');
+$custom_route = Route_Config::sanitize(['telegram' => ['templates' => ['fr_FR' => 'Bonjour {first_name}']]], $schema, $custom_locales);
+$assert($custom_route['telegram']['templates']['fr_FR'] === 'Bonjour {first_name}', 'Custom locale Telegram templates must survive sanitization.');
 $polish_defaults = Form_Translations::resolve([], 'pl_PL', 'uk_UA');
 $assert($polish_defaults['submit_label'] === 'Wyślij', 'Polish forms without stored translations must use Polish defaults.');
+$choice_schema = [
+	['key' => 'product', 'type' => 'select', 'label' => 'Продукт', 'options' => ['unihum', 'unipellet']],
+	['key' => 'delivery', 'type' => 'radio', 'label' => 'Доставка', 'options' => ['pickup', 'courier']],
+];
+Repositories::$forms[7] = [
+	'editor_mode' => 'visual',
+	'form_schema' => wp_json_encode($choice_schema),
+	'default_locale' => 'uk_UA',
+	'translations' => wp_json_encode([
+		'uk_UA' => ['submit_label' => 'Надіслати', 'messages' => [], 'fields' => [
+			'product' => ['label' => 'Продукт', 'placeholder' => 'Оберіть продукт', 'options' => ['Унігум', 'Уніпелет']],
+			'delivery' => ['label' => 'Доставка', 'placeholder' => '', 'options' => ['Самовивіз', 'Кур’єр']],
+		]],
+		'en_US' => ['submit_label' => 'Send', 'messages' => [], 'fields' => [
+			'product' => ['label' => 'Product', 'placeholder' => 'Choose a product', 'options' => ['Unihum', 'Unipellet']],
+			'delivery' => ['label' => 'Delivery', 'placeholder' => '', 'options' => ['Pickup', 'Courier']],
+		]],
+	]),
+];
+$presented_choices = Submission_Presenter::for_admin(['product' => 'unihum', 'delivery' => 'courier'], 7, 'en_US');
+$assert(($presented_choices['Product'] ?? '') === 'Unihum', 'Select values must use the localized option label.');
+$assert(($presented_choices['Delivery'] ?? '') === 'Courier', 'Radio values must use the localized option label.');
+$fallback_choice = Submission_Presenter::for_admin(['product' => 'unipellet'], 7, 'fr_FR');
+$assert(($fallback_choice['Продукт'] ?? '') === 'Уніпелет', 'Missing option translations must fall back to the primary locale.');
+$unknown_choice = Submission_Presenter::for_admin(['product' => 'legacy-value'], 7, 'en_US');
+$assert(($unknown_choice['Product'] ?? '') === 'legacy-value', 'Unknown option values must remain unchanged.');
+$telegram_variables = Submission_Presenter::for_telegram_variables(['product' => 'unihum', 'page_url' => 'https://example.com'], 7, 'en_US');
+$assert($telegram_variables['product'] === 'Unihum', 'Telegram template variables must use localized option labels.');
+$assert($telegram_variables['page_url'] === 'https://example.com', 'Non-form Telegram variables must remain unchanged.');
+$assert(Route_Config::resolve_value(['type' => 'field', 'source' => 'product'], ['product' => 'unihum']) === 'unihum', 'Connector mappings must keep raw option values.');
 $snapshot = Route_Config::snapshot($config, 'telegram', ['form_name' => 'Original', 'submitted_at' => '2026-07-13 10:00:00']);
+$assert(! Route_Config::is_enabled('telegram', ['state' => 'enabled']), 'A globally disabled connector must remain disabled even when a form route is explicitly enabled.');
+$assert(Route_Config::destinations(['telegram' => ['state' => 'enabled', 'profile_ids' => ['profile_1']]], 'telegram') === [], 'A globally disabled connector must not create deliveries for form routes or profiles.');
+$assert(Route_Config::is_enabled('telegram', ['state' => 'enabled'], true), 'An explicit admin route test may bypass the global integration switch.');
+$test_snapshot = Route_Config::snapshot(['telegram' => ['state' => 'enabled']], 'telegram', [], true);
+$assert(! empty($test_snapshot['allow_global_disabled']) && $test_snapshot['route']['state'] === 'enabled', 'A route test snapshot must preserve its explicit global-switch override.');
 $snapshot_route = Route_Config::route_from_snapshot($snapshot, 'telegram');
 $assert($snapshot_route['_context']['form_name'] === 'Original', 'Route snapshot context must be immutable.');
 $contacts = Lead_Deduplicator::contact_values(['contact_email' => ' TEST@Example.COM ', 'phone' => '+38 (099) 111-22-33']);
@@ -72,9 +141,93 @@ $no_contacts = Lead_Deduplicator::contact_values(['message' => 'Call me tomorrow
 $assert($no_contacts === ['phone' => '', 'email' => ''], 'Payloads without contact fields must remain unique.');
 $interactive_config = Route_Config::sanitize(['telegram' => ['interactive' => true]], $schema);
 $assert($interactive_config['telegram']['interactive'] === true, 'Interactive Telegram mode must survive route sanitization.');
+$assert(Route_Config::sanitize([], $schema)['telegram']['interactive'] === false, 'Telegram status actions must be disabled for routes that do not define them.');
+$assert(Route_Config::sanitize(['telegram' => ['interactive' => false]], $schema)['telegram']['interactive'] === false, 'Interactive Telegram mode must support an explicit opt-out.');
 $buttons = Telegram_Interactions::action_buttons(42, '123456:test-token');
-$assert(count($buttons) === 1 && count($buttons[0]) === 2, 'Telegram interaction must expose exactly two primary actions.');
+$assert(count($buttons) === 2 && count($buttons[0]) === 2 && count($buttons[1]) === 2, 'Telegram interaction must expose work, callback, rejection, and spam actions.');
 $assert(strlen($buttons[0][0]['callback_data']) <= 64, 'Telegram callback data must fit the Bot API limit.');
+$assert(($buttons[0][0]['style'] ?? '') === 'success' && ($buttons[1][0]['style'] ?? '') === 'primary' && ($buttons[1][1]['style'] ?? '') === 'danger', 'Telegram action buttons must expose semantic styles.');
+$status_button = Telegram_Interactions::status_button(42, '123456:test-token');
+$assert(count($status_button) === 1 && ($status_button[0][0]['text'] ?? '') === 'Змінити статус', 'Processed Telegram submissions must retain a status change action.');
+
+$minimal_fields = [
+	['key' => 'first_name', 'label' => 'Ім’я', 'type' => 'text', 'value' => 'Оксана', 'raw_value' => 'Оксана'],
+	['key' => 'phone', 'label' => 'Телефон', 'type' => 'tel', 'value' => '+38 (050) 991-99-10', 'raw_value' => '+38 (050) 991-99-10'],
+];
+$minimal_message = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA']);
+$assert(str_contains($minimal_message, '<b>Нова заявка</b>'), 'Minimal Telegram messages must use the compact HTML title.');
+$assert(str_contains($minimal_message, 'Ім’я: <b>Оксана</b>') && str_contains($minimal_message, 'Номер телефону: <code>+38 (050) 991-99-10</code>'), 'Minimal Telegram messages must label and emphasize the name and phone.');
+$assert(! str_contains($minimal_message, 'Деталі звернення') && ! str_contains($minimal_message, 'Джерело'), 'Empty Telegram sections must not be rendered.');
+
+$full_fields = array_merge($minimal_fields, [
+	['key' => 'last_name', 'label' => 'Прізвище', 'type' => 'text', 'value' => 'Рад', 'raw_value' => 'Рад'],
+	['key' => 'email', 'label' => 'Email', 'type' => 'email', 'value' => 'oksana@example.com', 'raw_value' => 'oksana@example.com'],
+	['key' => 'service', 'label' => 'Послуга', 'type' => 'select', 'value' => 'Консультація флеболога', 'raw_value' => 'consultation'],
+	['key' => 'city', 'label' => 'Місто', 'type' => 'text', 'value' => 'Київ', 'raw_value' => 'Київ'],
+	['key' => 'comment', 'label' => 'Коментар', 'type' => 'textarea', 'value' => 'Після 16:00', 'raw_value' => 'Після 16:00'],
+]);
+$source_url = 'https://example.com/landing?utm_source=ig&utm_medium=paid&fbclid=long-click-id';
+$full_message = Telegram_Message_Formatter::format($full_fields, [
+	'locale' => 'uk_UA',
+	'form_name' => 'Запис на консультацію',
+	'source_url' => $source_url,
+	'attribution' => ['utm_source' => 'ig', 'utm_medium' => 'paid', 'utm_campaign' => '120250174665870267', 'utm_term' => 'set-1', 'utm_content' => 'ad-1', 'utm_id' => 'campaign-1'],
+]);
+$assert(str_contains($full_message, 'Ім’я: <b>Оксана</b>') && str_contains($full_message, 'Прізвище: <b>Рад</b>') && ! str_contains($full_message, '<b>Оксана Рад</b>'), 'Full Telegram messages must render first and last names as separate fields.');
+$assert(str_contains($full_message, 'Email: oksana@example.com'), 'Full Telegram messages must render email separately.');
+$assert(str_contains($full_message, '<b>Деталі звернення</b>') && str_contains($full_message, 'Послуга: Консультація флеболога'), 'Full Telegram messages must render dynamic inquiry details.');
+$assert(str_contains($full_message, '<blockquote>Після 16:00</blockquote>'), 'Comments must be rendered as a separate quote block.');
+$assert(str_contains($full_message, 'Instagram · платна реклама') && str_contains($full_message, '<blockquote expandable>'), 'Advertising submissions must render a normalized source and expandable raw UTM data.');
+$assert(str_contains($full_message, 'href="https://example.com/landing?utm_source=ig&amp;utm_medium=paid&amp;fbclid=long-click-id"'), 'The complete source URL must remain in the link href.');
+$assert(! str_contains($full_message, 'fbclid:'), 'Click IDs must not be rendered as standalone fields.');
+
+$without_utm = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'source_url' => 'https://example.com/direct']);
+$assert(str_contains($without_utm, 'Прямий перехід') && ! str_contains($without_utm, 'Дані рекламної кампанії'), 'Direct submissions must omit the UTM block.');
+$assert(! str_contains($without_utm, '<a href='), 'Direct submissions must not duplicate the source URL inside the message text.');
+$escaped = Telegram_Message_Formatter::format([
+	['key' => 'first_name', 'label' => 'Ім’я', 'type' => 'text', 'value' => '<Оксана & Co>', 'raw_value' => '<Оксана & Co>'],
+	['key' => 'comment', 'label' => 'Коментар', 'type' => 'textarea', 'value' => '<script>alert(1)</script> & details', 'raw_value' => '<script>alert(1)</script> & details'],
+], ['locale' => 'uk_UA']);
+$assert(str_contains($escaped, '&lt;Оксана &amp; Co&gt;') && ! str_contains($escaped, '<script>'), 'Dynamic Telegram values must be escaped for HTML parse mode.');
+$repeat = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'repeat_count' => 3]);
+$assert(str_contains($repeat, '<i>Повторне звернення · 3 заявки</i>'), 'Repeat submissions must be identified below the title.');
+$acknowledged = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'acknowledged', 'actor' => '@manager']);
+$assert(str_contains($acknowledged, '<b>Заявка в роботі</b>') && str_contains($acknowledged, '<b>Взяв у роботу:</b> @manager'), 'Acknowledged submissions must expose the Telegram user who took the lead.');
+$follow_up = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'follow_up', 'actor' => '@manager']);
+$assert(str_contains($follow_up, '<b>Передзвонити пізніше</b>') && str_contains($follow_up, '<b>Запланував повторний дзвінок:</b> @manager'), 'Follow-up submissions must expose the user who scheduled the callback.');
+$completed = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'completed', 'actor' => '@manager']);
+$assert(str_contains($completed, '<b>Заявку опрацьовано</b>') && str_contains($completed, '<b>Завершив роботу:</b> @manager'), 'Completed submissions must expose the user who completed the work.');
+$reset = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'new', 'actor' => '@manager']);
+$assert(str_contains($reset, '<b>Скинув статус:</b> @manager'), 'Reset submissions must explain who cleared the status.');
+$rejected = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'rejected', 'actor' => '@manager']);
+$assert(str_contains($rejected, '<b>Заявку відхилено</b>') && str_contains($rejected, '<b>Відхилив заявку:</b> @manager'), 'Rejected submissions must expose the user who rejected the lead.');
+$spam = Telegram_Message_Formatter::format($minimal_fields, ['locale' => 'uk_UA', 'state' => 'spam', 'actor' => '@manager']);
+$assert(str_contains($spam, '<b>Заявку позначено як спам</b>') && str_contains($spam, '<b>Позначив як спам:</b> @manager'), 'Spam submissions must expose the user who changed the state.');
+$without_phone = Telegram_Message_Formatter::format([
+	['key' => 'email', 'label' => 'Email', 'type' => 'email', 'value' => 'lead@example.com', 'raw_value' => 'lead@example.com'],
+	['key' => 'ip_address', 'label' => 'IP', 'type' => 'text', 'value' => '127.0.0.1', 'raw_value' => '127.0.0.1'],
+	['key' => 'consent', 'label' => 'Згода на обробку даних', 'type' => 'checkbox', 'value' => 'Так', 'raw_value' => '1'],
+	['key' => 'optional', 'label' => 'Optional', 'type' => 'text', 'value' => '-', 'raw_value' => '-'],
+], ['locale' => 'uk_UA']);
+$assert(str_contains($without_phone, 'Email: lead@example.com') && ! str_contains($without_phone, '<code>'), 'Submissions without phone numbers must still render valid contact details.');
+$assert(! str_contains($without_phone, '127.0.0.1') && ! str_contains($without_phone, 'Optional') && ! str_contains($without_phone, 'Згода'), 'Technical, legal, and empty fields must not be rendered in Telegram.');
+$long_comment = str_repeat('Дуже довгий коментар. ', 500);
+$long_message = Telegram_Message_Formatter::format(array_merge($minimal_fields, [
+	['key' => 'comment', 'label' => 'Коментар', 'type' => 'textarea', 'value' => $long_comment, 'raw_value' => $long_comment],
+]), ['locale' => 'uk_UA', 'source_url' => $source_url]);
+$long_message_length = function_exists('mb_strlen') ? mb_strlen($long_message, 'UTF-8') : strlen($long_message);
+$assert($long_message_length <= 4096, 'Long Telegram messages must stay within the 4096-character limit.');
+$assert(! str_contains($long_message, $long_comment), 'Long comments must be shortened before essential fields.');
+$many_details = $minimal_fields;
+for ($index = 1; $index <= 20; ++$index) {
+	$many_details[] = ['key' => 'detail_' . $index, 'label' => 'Поле ' . $index, 'type' => 'text', 'value' => str_repeat('Значення ', 100), 'raw_value' => str_repeat('Значення ', 100)];
+}
+$fitted_details = Telegram_Message_Formatter::format($many_details, ['locale' => 'uk_UA', 'source_url' => $source_url]);
+$fitted_details_length = function_exists('mb_strlen') ? mb_strlen($fitted_details, 'UTF-8') : strlen($fitted_details);
+$assert($fitted_details_length <= 4096 && str_contains($fitted_details, 'Ім’я: <b>Оксана</b>') && str_contains($fitted_details, 'Номер телефону: <code>+38 (050) 991-99-10</code>'), 'Secondary fields must be removed before essential contact data when the Telegram limit is reached.');
+$utility = Telegram_Interactions::utility_buttons('+380509919910', $source_url);
+$assert(($utility[0][0]['copy_text']['text'] ?? '') === '+380509919910', 'The phone utility button must copy the normalized number.');
+$assert(($utility[0][1]['url'] ?? '') === $source_url, 'The source utility button must preserve the complete URL.');
 
 if ($failures !== []) {
 	fwrite(STDERR, implode(PHP_EOL, $failures) . PHP_EOL);

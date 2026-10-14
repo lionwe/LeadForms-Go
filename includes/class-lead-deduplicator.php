@@ -8,6 +8,9 @@ final class Lead_Deduplicator
 {
 	private const SECRET_OPTION = 'leadforms_go_dedup_secret';
 	private const BACKFILL_HOOK = 'leadforms_go_dedup_backfill';
+	private const BACKFILL_COMPLETE_OPTION = 'leadforms_go_dedup_backfill_complete';
+	private const BACKFILL_LOCK_OPTION = 'leadforms_go_dedup_backfill_lock';
+	private const BACKFILL_LOCK_TTL = 5 * MINUTE_IN_SECONDS;
 
 	/** @return array{phone_fingerprint:string,email_fingerprint:string,duplicate_of:?int} */
 	public static function analyze(array $payload, int $before_id = 0, int $form_id = 0): array
@@ -35,27 +38,50 @@ final class Lead_Deduplicator
 		}
 	}
 
+	public static function maybe_process_fallback(): void
+	{
+		if (get_option(self::BACKFILL_COMPLETE_OPTION)) return;
+		$scheduled = wp_next_scheduled(self::BACKFILL_HOOK);
+		if ($scheduled !== false && $scheduled > time()) return;
+		self::backfill();
+	}
+
 	public static function backfill(): void
 	{
+		if (! self::acquire_backfill_lock()) return;
 		global $wpdb;
 		$table = Database::tables()['submissions'];
-		$rows = $wpdb->get_results(
-			"SELECT id, form_id, payload FROM {$table} WHERE dedup_indexed = 0 AND is_test = 0 AND lead_state <> 'spam' ORDER BY id ASC LIMIT 200",
-			ARRAY_A
-		) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		foreach ($rows as $row) {
-			$payload = json_decode((string) ($row['payload'] ?? ''), true);
-			$result = self::analyze(is_array($payload) ? $payload : [], (int) $row['id'], (int) ($row['form_id'] ?? 0));
-			$wpdb->query($wpdb->prepare(
-				"UPDATE {$table} SET phone_fingerprint = %s, email_fingerprint = %s, duplicate_of = NULLIF(%d, 0), dedup_indexed = 1 WHERE id = %d",
-				$result['phone_fingerprint'],
-				$result['email_fingerprint'],
-				(int) ($result['duplicate_of'] ?? 0),
-				(int) $row['id']
-			));
+		try {
+			$rows = $wpdb->get_results(
+				"SELECT id, form_id, payload FROM {$table} WHERE dedup_indexed = 0 AND is_test = 0 AND is_suspected_bot = 0 AND lead_state <> 'spam' ORDER BY id ASC LIMIT 200",
+				ARRAY_A
+			) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			foreach ($rows as $row) {
+				$payload = json_decode((string) ($row['payload'] ?? ''), true);
+				$result = self::analyze(is_array($payload) ? $payload : [], (int) $row['id'], (int) ($row['form_id'] ?? 0));
+				$wpdb->query($wpdb->prepare(
+					"UPDATE {$table} SET phone_fingerprint = %s, email_fingerprint = %s, duplicate_of = NULLIF(%d, 0), dedup_indexed = 1 WHERE id = %d",
+					$result['phone_fingerprint'],
+					$result['email_fingerprint'],
+					(int) ($result['duplicate_of'] ?? 0),
+					(int) $row['id']
+				));
+			}
+			if (count($rows) === 200) self::schedule_backfill();
+			else update_option(self::BACKFILL_COMPLETE_OPTION, current_time('mysql'), false);
+		} finally {
+			delete_option(self::BACKFILL_LOCK_OPTION);
 		}
-		if (count($rows) === 200) self::schedule_backfill();
-		else update_option('leadforms_go_dedup_backfill_complete', current_time('mysql'), false);
+	}
+
+	private static function acquire_backfill_lock(): bool
+	{
+		$now = time();
+		if (add_option(self::BACKFILL_LOCK_OPTION, $now, '', false)) return true;
+		$locked_at = (int) get_option(self::BACKFILL_LOCK_OPTION, 0);
+		if ($locked_at > 0 && ($now - $locked_at) < self::BACKFILL_LOCK_TTL) return false;
+		delete_option(self::BACKFILL_LOCK_OPTION);
+		return add_option(self::BACKFILL_LOCK_OPTION, $now, '', false);
 	}
 
 	/** @return array{phone:string,email:string} */
@@ -117,7 +143,7 @@ final class Lead_Deduplicator
 			$matches[] = 'email_fingerprint = %s';
 			$args[] = $email;
 		}
-		$sql = "SELECT id FROM {$table} WHERE is_test = 0 AND lead_state <> 'spam' AND dedup_indexed = 1 AND (" . implode(' OR ', $matches) . ')';
+		$sql = "SELECT id FROM {$table} WHERE is_test = 0 AND is_suspected_bot = 0 AND lead_state <> 'spam' AND dedup_indexed = 1 AND (" . implode(' OR ', $matches) . ')';
 		if ($before_id > 0) {
 			$sql .= ' AND id < %d';
 			$args[] = $before_id;

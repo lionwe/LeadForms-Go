@@ -7,6 +7,7 @@ namespace LeadFormsGo;
 final class Telegram_Interactions
 {
 	public const REMINDER_HOOK = 'leadforms_go_telegram_reminder';
+	public const SITE_TRANSFER_ALERT_HOOK = 'leadforms_go_site_transfer_alert';
 	private const REMINDER_DELAY = 30 * MINUTE_IN_SECONDS;
 	private const API_TIMEOUT = 12;
 
@@ -15,6 +16,54 @@ final class Telegram_Interactions
 		add_action('rest_api_init', [self::class, 'register_route']);
 		add_action('leadforms_go_delivery_processed', [self::class, 'delivery_processed'], 10, 3);
 		add_action(self::REMINDER_HOOK, [self::class, 'send_reminder']);
+		add_action(self::SITE_TRANSFER_ALERT_HOOK, [self::class, 'send_site_transfer_alert']);
+	}
+
+	public static function send_site_transfer_alert(): void
+	{
+		$transfer = Database::site_transfer_notice();
+		if ($transfer === [] || ($transfer['telegram_alert_status'] ?? '') !== 'pending') return;
+
+		$settings = Settings::section('telegram');
+		$token = sanitize_text_field((string) ($settings['token'] ?? ''));
+		$chat_id = sanitize_text_field((string) ($settings['chat_id'] ?? ''));
+		if ($token === '' || $chat_id === '') {
+			foreach (Connection_Profiles::all('telegram') as $profile) {
+				$token = sanitize_text_field((string) ($profile['token'] ?? ''));
+				$chat_id = sanitize_text_field((string) ($profile['chat_id'] ?? ''));
+				if ($token !== '' && $chat_id !== '') break;
+			}
+		}
+		if ($token === '' || $chat_id === '') {
+			$transfer['telegram_alert_status'] = 'unavailable';
+			update_option('leadforms_go_site_transfer', $transfer, false);
+			return;
+		}
+
+		$previous = esc_html((string) ($transfer['previous'] ?? ''));
+		$current = esc_html((string) ($transfer['current'] ?? ''));
+		$settings_url = esc_url(admin_url('admin.php?page=leadforms-go-settings'));
+		$text = sprintf(
+			__('<b>LeadForms Go: інтеграції вимкнено</b>' . "\n\n" . 'Виявлено зміну домену сайту: %1$s → %2$s.' . "\n" . 'Активні доставки скасовано: %3$d.' . "\n\n" . 'Перейдіть у <a href="%4$s">налаштування інтеграцій</a> в адмінці WordPress і ввімкніть їх знову.', 'leadforms-go'),
+			$previous,
+			$current,
+			(int) ($transfer['cancelled'] ?? 0),
+			$settings_url
+		);
+		$result = self::api($token, 'sendMessage', [
+			'chat_id' => $chat_id,
+			'text' => $text,
+			'parse_mode' => 'HTML',
+			'disable_web_page_preview' => true,
+		]);
+		$attempts = absint($transfer['telegram_alert_attempts'] ?? 0) + 1;
+		$transfer['telegram_alert_attempts'] = $attempts;
+		$transfer['telegram_alert_status'] = is_wp_error($result) ? ($attempts >= 3 ? 'failed' : 'pending') : 'sent';
+		$transfer['telegram_alert_at'] = time();
+		update_option('leadforms_go_site_transfer', $transfer, false);
+		if (is_wp_error($result) && $attempts < 3 && ! wp_next_scheduled(self::SITE_TRANSFER_ALERT_HOOK)) {
+			wp_schedule_single_event(time() + (5 * MINUTE_IN_SECONDS), self::SITE_TRANSFER_ALERT_HOOK);
+		}
 	}
 
 	public static function register_route(): void
@@ -60,10 +109,39 @@ final class Telegram_Interactions
 
 	public static function action_buttons(int $delivery_id, string $token): array
 	{
+		return [
+			[
+				['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
+				['text' => __('Передзвонити пізніше', 'leadforms-go'), 'callback_data' => self::callback_data('l', $delivery_id, $token)],
+			],
+			[
+				['text' => __('Відхилити', 'leadforms-go'), 'callback_data' => self::callback_data('r', $delivery_id, $token), 'style' => 'primary'],
+				['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token), 'style' => 'danger'],
+			],
+		];
+	}
+
+	public static function status_button(int $delivery_id, string $token): array
+	{
 		return [[
-			['text' => __('Взяти в роботу', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token)],
-			['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token)],
+			['text' => __('Змінити статус', 'leadforms-go'), 'callback_data' => self::callback_data('m', $delivery_id, $token), 'style' => 'primary'],
 		]];
+	}
+
+	public static function utility_buttons(string $phone, string $source_url): array
+	{
+		$row = [];
+		if ($phone !== '') {
+			$row[] = [
+				'text' => __('Скопіювати номер', 'leadforms-go'),
+				'copy_text' => ['text' => substr(sanitize_text_field($phone), 0, 256)],
+			];
+		}
+		$source_url = esc_url_raw($source_url, ['http', 'https']);
+		if ($source_url !== '' && wp_http_validate_url($source_url)) {
+			$row[] = ['text' => __('Відкрити сторінку', 'leadforms-go'), 'url' => $source_url, 'style' => 'primary'];
+		}
+		return $row === [] ? [] : [$row];
 	}
 
 	public static function delivery_processed(int $delivery_id, string $status, Result $result): void
@@ -114,7 +192,7 @@ final class Telegram_Interactions
 		$callback_id = sanitize_text_field((string) ($callback['id'] ?? ''));
 		$data = sanitize_text_field((string) ($callback['data'] ?? ''));
 		if ($callback_id === '') return new \WP_REST_Response(['ok' => true], 200);
-		if (! preg_match('/^lfg:([ascx]):(\d+):([a-f0-9]{12})$/', $data, $match)) {
+		if (! preg_match('/^lfg:([acdflmnpqrsx]):(\d+):([a-f0-9]{12})$/', $data, $match)) {
 			self::answer($token, $callback_id, __('Некоректна дія.', 'leadforms-go'), true);
 			return new \WP_REST_Response(['ok' => true], 200);
 		}
@@ -138,28 +216,87 @@ final class Telegram_Interactions
 			self::answer($token, $callback_id, __('Заявку не знайдено.', 'leadforms-go'), true);
 			return new \WP_REST_Response(['ok' => true], 200);
 		}
-		$custom = is_array($meta['custom_keyboard'] ?? null) ? $meta['custom_keyboard'] : [];
+		$persistent = is_array($meta['custom_keyboard'] ?? null) ? $meta['custom_keyboard'] : [];
+		$actor = self::actor($callback);
+		$owner_id = (string) ($submission['assigned_to_telegram_id'] ?? '');
+		if ($owner_id !== '' && ! hash_equals($owner_id, $actor['id']) && in_array($action, ['m', 'n', 'l', 'f', 'r', 's', 'd', 'c', 'x'], true)) {
+			self::answer($token, $callback_id, __('Змінювати статус може лише поточний відповідальний. Запросіть передачу заявки.', 'leadforms-go'), true);
+			return new \WP_REST_Response(['ok' => true], 200);
+		}
 		if ($action === 's') {
 			$confirm = [[
-				['text' => __('Підтвердити спам', 'leadforms-go'), 'callback_data' => self::callback_data('c', $delivery_id, $token)],
+				['text' => __('Підтвердити спам', 'leadforms-go'), 'callback_data' => self::callback_data('c', $delivery_id, $token), 'style' => 'danger'],
 				['text' => __('Скасувати', 'leadforms-go'), 'callback_data' => self::callback_data('x', $delivery_id, $token)],
 			]];
-			self::edit_keyboard($token, $chat_id, $message_id, array_merge($custom, $confirm));
+			self::edit_keyboard($token, $chat_id, $message_id, array_merge($persistent, $confirm));
 			self::answer($token, $callback_id, __('Підтвердьте позначення як спам.', 'leadforms-go'));
+		} elseif ($action === 'r') {
+			$confirm = [[
+				['text' => __('Підтвердити відхилення', 'leadforms-go'), 'callback_data' => self::callback_data('d', $delivery_id, $token), 'style' => 'primary'],
+				['text' => __('Скасувати', 'leadforms-go'), 'callback_data' => self::callback_data('x', $delivery_id, $token)],
+			]];
+			self::edit_keyboard($token, $chat_id, $message_id, array_merge($persistent, $confirm));
+			self::answer($token, $callback_id, __('Підтвердьте відхилення заявки.', 'leadforms-go'));
+		} elseif ($action === 'm') {
+			$menu = self::status_menu($delivery_id, $token);
+			if (! empty($submission['transfer_requested_by_telegram_id'])) $menu = array_merge($menu, self::transfer_decision_buttons($delivery_id, $token));
+			self::edit_keyboard($token, $chat_id, $message_id, array_merge($persistent, $menu));
+			self::answer($token, $callback_id, __('Оберіть новий статус.', 'leadforms-go'));
 		} elseif ($action === 'x') {
-			self::edit_keyboard($token, $chat_id, $message_id, array_merge($custom, self::action_buttons($delivery_id, $token)));
+			$keyboard = self::keyboard_for_state((string) ($submission['lead_state'] ?? 'new'), $delivery_id, $token);
+			if (! empty($submission['transfer_requested_by_telegram_id']) && (string) ($submission['assigned_to_telegram_id'] ?? '') === $actor['id']) $keyboard = array_merge($keyboard, self::transfer_decision_buttons($delivery_id, $token));
+			self::edit_keyboard($token, $chat_id, $message_id, array_merge($persistent, $keyboard));
 			self::answer($token, $callback_id, __('Скасовано.', 'leadforms-go'));
 		} elseif ($action === 'a') {
-			if (($submission['lead_state'] ?? 'new') === 'spam') self::answer($token, $callback_id, __('Заявку вже позначено як спам.', 'leadforms-go'), true);
-			elseif (($submission['lead_state'] ?? 'new') === 'acknowledged') self::answer($token, $callback_id, __('Заявку вже взято в роботу.', 'leadforms-go'));
-			else {
-				Repositories::set_lead_state((int) $submission['id'], 'acknowledged');
-				self::edit_keyboard($token, $chat_id, $message_id, $custom);
+			$claim = Repositories::claim_lead((int) $submission['id'], $actor['label'], $actor['id']);
+			if ($claim['status'] === 'claimed') {
+				self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'acknowledged', $claim['owner'], array_merge($persistent, self::status_button($delivery_id, $token)));
 				self::answer($token, $callback_id, __('Заявку взято в роботу.', 'leadforms-go'));
+			} elseif (in_array($claim['status'], ['transfer_requested', 'transfer_pending'], true)) {
+				self::edit_keyboard($token, $chat_id, $message_id, array_merge($persistent, self::status_button($delivery_id, $token), self::transfer_decision_buttons($delivery_id, $token)));
+				if ($claim['status'] === 'transfer_requested') self::notify_transfer_request($token, $chat_id, $message_id, $submission, $actor['label'], $claim['owner']);
+				self::answer($token, $callback_id, $claim['status'] === 'transfer_requested'
+					? sprintf(__('Заявка вже у менеджера %s. Йому надіслано запит на передачу.', 'leadforms-go'), $claim['owner'])
+					: __('Запит на передачу вже очікує рішення поточного менеджера.', 'leadforms-go'), true);
+			} elseif ($claim['status'] === 'already_owner') {
+				self::answer($token, $callback_id, __('Ви вже відповідальний за цю заявку.', 'leadforms-go'));
+			} else {
+				self::answer($token, $callback_id, __('Не вдалося взяти заявку в роботу. Оновіть повідомлення та спробуйте ще раз.', 'leadforms-go'), true);
 			}
+		} elseif ($action === 'p' || $action === 'q') {
+			$resolved = $action === 'p'
+				? Repositories::approve_lead_transfer((int) $submission['id'], $actor['label'], $actor['id'])
+				: Repositories::reject_lead_transfer((int) $submission['id'], $actor['label'], $actor['id']);
+			if ($resolved['status'] === 'approved') {
+				self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'acknowledged', $resolved['owner'], array_merge($persistent, self::status_button($delivery_id, $token)));
+				self::answer($token, $callback_id, sprintf(__('Передачу погоджено. Тепер відповідальний: %s.', 'leadforms-go'), $resolved['owner']));
+			} elseif ($resolved['status'] === 'rejected') {
+				self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'acknowledged', $resolved['owner'], array_merge($persistent, self::status_button($delivery_id, $token)));
+				self::answer($token, $callback_id, __('Запит на передачу відхилено.', 'leadforms-go'));
+			} else {
+				self::answer($token, $callback_id, $resolved['status'] === 'unauthorized'
+					? __('Погодити або відхилити передачу може лише поточний менеджер.', 'leadforms-go')
+					: __('Запит на передачу вже неактуальний.', 'leadforms-go'), true);
+			}
+		} elseif ($action === 'n') {
+			Repositories::set_lead_state((int) $submission['id'], 'new', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'new', $actor['label'], array_merge($persistent, self::action_buttons($delivery_id, $token)));
+			self::answer($token, $callback_id, __('Статус заявки скинуто.', 'leadforms-go'));
+		} elseif ($action === 'l') {
+			Repositories::set_lead_state((int) $submission['id'], 'follow_up', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'follow_up', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
+			self::answer($token, $callback_id, __('Заявку відкладено для повторного дзвінка.', 'leadforms-go'));
+		} elseif ($action === 'f') {
+			Repositories::set_lead_state((int) $submission['id'], 'completed', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'completed', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
+			self::answer($token, $callback_id, __('Роботу із заявкою завершено.', 'leadforms-go'));
+		} elseif ($action === 'd') {
+			Repositories::set_lead_state((int) $submission['id'], 'rejected', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'rejected', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
+			self::answer($token, $callback_id, __('Заявку відхилено.', 'leadforms-go'));
 		} elseif ($action === 'c') {
-			if (($submission['lead_state'] ?? 'new') !== 'spam') Repositories::set_lead_state((int) $submission['id'], 'spam');
-			self::edit_keyboard($token, $chat_id, $message_id, $custom);
+			Repositories::set_lead_state((int) $submission['id'], 'spam', $actor['label'], $actor['id']);
+			self::edit_submission_message($token, $chat_id, $message_id, $submission, $meta, 'spam', $actor['label'], array_merge($persistent, self::status_button($delivery_id, $token)));
 			self::answer($token, $callback_id, __('Заявку позначено як спам.', 'leadforms-go'));
 		}
 		return new \WP_REST_Response(['ok' => true], 200);
@@ -198,6 +335,107 @@ final class Telegram_Interactions
 			'message_id' => $message_id,
 			'reply_markup' => wp_json_encode(['inline_keyboard' => $keyboard]),
 		]);
+	}
+
+	private static function status_menu(int $delivery_id, string $token): array
+	{
+		return [
+			[
+				['text' => __('Скинути статус', 'leadforms-go'), 'callback_data' => self::callback_data('n', $delivery_id, $token)],
+				['text' => __('У роботі', 'leadforms-go'), 'callback_data' => self::callback_data('a', $delivery_id, $token), 'style' => 'success'],
+			],
+			[
+				['text' => __('Передзвонити пізніше', 'leadforms-go'), 'callback_data' => self::callback_data('l', $delivery_id, $token)],
+				['text' => __('Завершити', 'leadforms-go'), 'callback_data' => self::callback_data('f', $delivery_id, $token), 'style' => 'success'],
+			],
+			[
+				['text' => __('Відхилити', 'leadforms-go'), 'callback_data' => self::callback_data('r', $delivery_id, $token), 'style' => 'primary'],
+				['text' => __('Спам', 'leadforms-go'), 'callback_data' => self::callback_data('s', $delivery_id, $token), 'style' => 'danger'],
+			],
+			[
+				['text' => __('Скасувати', 'leadforms-go'), 'callback_data' => self::callback_data('x', $delivery_id, $token)],
+			],
+		];
+	}
+
+	private static function transfer_decision_buttons(int $delivery_id, string $token): array
+	{
+		return [[
+			['text' => __('Погодити передачу', 'leadforms-go'), 'callback_data' => self::callback_data('p', $delivery_id, $token), 'style' => 'success'],
+			['text' => __('Відхилити передачу', 'leadforms-go'), 'callback_data' => self::callback_data('q', $delivery_id, $token), 'style' => 'danger'],
+		]];
+	}
+
+	private static function notify_transfer_request(string $token, string $chat_id, int $message_id, array $submission, string $requester, string $owner): void
+	{
+		$owner_id = preg_replace('/[^0-9-]/', '', (string) ($submission['assigned_to_telegram_id'] ?? '')) ?: '';
+		$owner_mention = $owner_id !== ''
+			? '<a href="tg://user?id=' . esc_attr($owner_id) . '">' . esc_html($owner) . '</a>'
+			: esc_html($owner);
+		$text = sprintf(
+			__('Менеджер %1$s просить передати заявку #%2$d. Поточний відповідальний: %3$s. Рішення доступне на початковому повідомленні.', 'leadforms-go'),
+			esc_html($requester),
+			(int) ($submission['id'] ?? 0),
+			$owner_mention
+		);
+		self::api($token, 'sendMessage', [
+			'chat_id' => $chat_id,
+			'text' => $text,
+			'parse_mode' => 'HTML',
+			'reply_parameters' => wp_json_encode(['message_id' => $message_id]),
+			'disable_web_page_preview' => true,
+		]);
+	}
+
+	private static function keyboard_for_state(string $state, int $delivery_id, string $token): array
+	{
+		return $state === 'new' ? self::action_buttons($delivery_id, $token) : self::status_button($delivery_id, $token);
+	}
+
+	private static function edit_submission_message(string $token, string $chat_id, int $message_id, array $submission, array $meta, string $state, string $actor, array $keyboard): void
+	{
+		if (empty($meta['default_message'])) {
+			self::edit_keyboard($token, $chat_id, $message_id, $keyboard);
+			return;
+		}
+		$payload = json_decode((string) ($submission['payload'] ?? ''), true);
+		if (! is_array($payload)) {
+			self::edit_keyboard($token, $chat_id, $message_id, $keyboard);
+			return;
+		}
+		$text = Submission_Presenter::telegram_message_for_state(
+			$payload,
+			(int) ($submission['form_id'] ?? 0),
+			(string) ($submission['locale'] ?? ''),
+			(string) ($submission['referer'] ?? ''),
+			(string) ($submission['form_name'] ?? ''),
+			Repositories::repeat_submission_count((int) ($submission['id'] ?? 0)),
+			$state,
+			$actor
+		);
+		self::api($token, 'editMessageText', [
+			'chat_id' => $chat_id,
+			'message_id' => $message_id,
+			'text' => $text,
+			'parse_mode' => 'HTML',
+			'link_preview_options' => wp_json_encode(['is_disabled' => true]),
+			'reply_markup' => wp_json_encode(['inline_keyboard' => $keyboard]),
+		]);
+	}
+
+	/** @return array{label:string,id:string} */
+	private static function actor(array $callback): array
+	{
+		$from = is_array($callback['from'] ?? null) ? $callback['from'] : [];
+		$username = sanitize_key((string) ($from['username'] ?? ''));
+		$label = $username !== '' ? '@' . $username : trim(implode(' ', array_filter([
+			sanitize_text_field((string) ($from['first_name'] ?? '')),
+			sanitize_text_field((string) ($from['last_name'] ?? '')),
+		])));
+		return [
+			'label' => $label !== '' ? $label : __('Невідомий користувач Telegram', 'leadforms-go'),
+			'id' => substr(preg_replace('/[^0-9-]/', '', (string) ($from['id'] ?? '')) ?: '', 0, 32),
+		];
 	}
 
 	private static function answer(string $token, string $callback_id, string $text, bool $alert = false): void

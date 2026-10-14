@@ -7,6 +7,7 @@ namespace LeadFormsGo;
 final class Form_Translations
 {
 	public const DEFAULT_LOCALE = 'uk_UA';
+	public const MAX_CUSTOM_LOCALES = 20;
 
 	public static function available_locales(): array
 	{
@@ -42,6 +43,21 @@ final class Form_Translations
 		if (! preg_match('/^[a-z]{2,3}$/', $language) || ($region !== '' && ! preg_match('/^[A-Z]{2}$/', $region))) return '';
 		if ($region === '' && isset(['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE'][$language])) $region = ['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE'][$language];
 		return $region === '' ? $language : $language . '_' . $region;
+	}
+
+	public static function locales(array $translations = []): array
+	{
+		$locales = self::available_locales();
+		$custom_count = 0;
+		foreach ($translations as $locale => $translation) {
+			$locale = self::normalize_locale((string) $locale);
+			if ($locale === '' || isset($locales[$locale]) || ! is_array($translation)) continue;
+			if ($custom_count >= self::MAX_CUSTOM_LOCALES) break;
+			$label = sanitize_text_field((string) ($translation['language_name'] ?? ''));
+			$locales[$locale] = $label !== '' ? $label : $locale;
+			++$custom_count;
+		}
+		return $locales;
 	}
 
 	public static function detect_locale(string $requested = ''): string
@@ -199,19 +215,23 @@ final class Form_Translations
 			$locale = self::normalize_locale((string) $locale);
 			if ($locale === '') continue;
 			$current = $translations[$locale] ?? ['submit_label' => '', 'messages' => [], 'fields' => []];
-			$current['submit_label'] = (string) (($current['submit_label'] ?? '') ?: self::default_submit_label($locale));
-			$current['messages'] = array_replace(self::default_messages($locale), array_filter((array) ($current['messages'] ?? []), static fn (mixed $value): bool => is_string($value) && $value !== ''));
+			$has_native_defaults = self::has_native_defaults($locale);
+			$current['submit_label'] = (string) ($current['submit_label'] ?? '');
+			if ($current['submit_label'] === '' && $has_native_defaults) $current['submit_label'] = self::default_submit_label($locale);
+			$current['messages'] = $has_native_defaults
+				? array_replace(self::default_messages($locale), array_filter((array) ($current['messages'] ?? []), static fn (mixed $value): bool => is_string($value) && $value !== ''))
+				: (array) ($current['messages'] ?? []);
 			$current['fields'] = is_array($current['fields'] ?? null) ? $current['fields'] : [];
-			$defaults = self::default_fields($locale);
+			$defaults = $has_native_defaults ? self::default_fields($locale) : [];
 			foreach ($schema as $field) {
 				$key = sanitize_key((string) ($field['key'] ?? ''));
 				if ($key === '') continue;
 				$base_key = preg_replace('/_\d+$/', '', $key) ?: $key;
 				$field_defaults = $defaults[$base_key] ?? [];
 				$existing = is_array($current['fields'][$key] ?? null) ? $current['fields'][$key] : [];
-				$use_locale_defaults = self::language($locale) !== 'uk';
-				$fallback_label = $use_locale_defaults ? ($field_defaults['label'] ?? '') : (string) ($field['label'] ?? ($field_defaults['label'] ?? $key));
-				$fallback_placeholder = $use_locale_defaults ? ($field_defaults['placeholder'] ?? '') : (string) ($field['placeholder'] ?? ($field_defaults['placeholder'] ?? ''));
+				$use_schema_defaults = self::language($locale) === 'uk';
+				$fallback_label = $use_schema_defaults ? (string) ($field['label'] ?? ($field_defaults['label'] ?? $key)) : (string) ($field_defaults['label'] ?? '');
+				$fallback_placeholder = $use_schema_defaults ? (string) ($field['placeholder'] ?? ($field_defaults['placeholder'] ?? '')) : (string) ($field_defaults['placeholder'] ?? '');
 				$current['fields'][$key] = [
 					'label' => sanitize_text_field((string) (($existing['label'] ?? '') ?: $fallback_label)),
 					'placeholder' => sanitize_text_field((string) (($existing['placeholder'] ?? '') ?: $fallback_placeholder)),
@@ -227,9 +247,12 @@ final class Form_Translations
 	{
 		if (! is_array($translations)) return [];
 		$clean = [];
+		$base_locales = self::available_locales();
+		$custom_count = 0;
 		foreach ($translations as $locale => $translation) {
 			$locale = self::normalize_locale((string) $locale);
 			if ($locale === '' || ! is_array($translation)) continue;
+			if (! isset($base_locales[$locale]) && ++$custom_count > self::MAX_CUSTOM_LOCALES) continue;
 			$fields = [];
 			foreach (($translation['fields'] ?? []) as $key => $field) {
 				$key = sanitize_key((string) $key);
@@ -245,6 +268,7 @@ final class Form_Translations
 				$messages[$key] = sanitize_text_field((string) ($translation['messages'][$key] ?? ''));
 			}
 			$clean[$locale] = [
+				'language_name' => sanitize_text_field((string) ($translation['language_name'] ?? '')),
 				'submit_label' => sanitize_text_field((string) ($translation['submit_label'] ?? '')),
 				'messages' => $messages,
 				'fields' => $fields,
@@ -323,5 +347,10 @@ final class Form_Translations
 	private static function language(string $locale): string
 	{
 		return strtolower((string) strtok(self::normalize_locale($locale), '_'));
+	}
+
+	private static function has_native_defaults(string $locale): bool
+	{
+		return in_array(self::language($locale), ['uk', 'en', 'pl', 'de'], true);
 	}
 }

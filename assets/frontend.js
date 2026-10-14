@@ -239,6 +239,8 @@ class PhoneMask {
 	}
 }
 
+const ATTRIBUTION_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', 'gclid', 'fbclid', 'ttclid'];
+
 class LeadForm {
 	constructor(root, config) {
 		this.root = root;
@@ -247,6 +249,7 @@ class LeadForm {
 		this.config = { ...config, messages: { ...config.messages, ...this.parseMessages() } };
 		if (!this.form) return;
 		this.startedAt = Math.floor(Date.now() / 1000);
+		this.initializeAttribution();
 		this.visitedAt = Number(this.storageGet('_lfg_visited_at')) || this.startedAt;
 		this.landingPage = this.storageGet('_lfg_landing_page') || window.location.href;
 		if (!this.storageGet('_lfg_landing_page')) this.storageSet('_lfg_landing_page', this.landingPage);
@@ -260,6 +263,24 @@ class LeadForm {
 		this.form.noValidate = true;
 		this.form.addEventListener('submit', (event) => this.submit(event), true);
 		this.trackView();
+	}
+
+	initializeAttribution() {
+		const query = new URLSearchParams(window.location.search);
+		const hasCampaignData = ATTRIBUTION_KEYS.some((key) => Boolean(query.get(key)));
+		let startsNewVisit = document.referrer === '';
+		if (!startsNewVisit) {
+			try { startsNewVisit = new URL(document.referrer).origin !== window.location.origin; }
+			catch { startsNewVisit = true; }
+		}
+		if (!hasCampaignData && !startsNewVisit) return;
+		[...ATTRIBUTION_KEYS, '_lfg_landing_page', '_lfg_visited_at'].forEach((key) => this.storageRemove(key));
+		ATTRIBUTION_KEYS.forEach((key) => {
+			const value = query.get(key);
+			if (value) this.storageSet(key, value);
+		});
+		this.storageSet('_lfg_landing_page', window.location.href);
+		this.storageSet('_lfg_visited_at', String(this.startedAt));
 	}
 
 	createRequestId() {
@@ -348,7 +369,7 @@ class LeadForm {
 			if (phone.input.name) payload[phone.input.name] = phone.fullValue();
 		});
 		const query = new URLSearchParams(window.location.search);
-		['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ttclid'].forEach((key) => {
+		ATTRIBUTION_KEYS.forEach((key) => {
 			const current = query.get(key);
 			if (current) this.storageSet(key, current);
 			const value = current || this.storageGet(key);
@@ -464,6 +485,11 @@ class LeadForm {
 			const ttl = Math.max(0, Number(this.config.attributionTtl) || 0) * 1000;
 			if (ttl > 0) window.localStorage.setItem(key, JSON.stringify({ value, expiresAt: Date.now() + ttl }));
 		} catch { /* Storage can be blocked by browser privacy settings. */ }
+	}
+
+	storageRemove(key) {
+		try { window.localStorage.removeItem(key); }
+		catch { /* Storage can be blocked by browser privacy settings. */ }
 	}
 
 	setSubmitting(button, text, submitting, original = '') {

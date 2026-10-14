@@ -76,19 +76,36 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		$locale = Form_Translations::normalize_locale($request->locale) ?: Form_Translations::DEFAULT_LOCALE;
 		$template = $this->localized((array) ($route['templates'] ?? []), $locale);
 		$mode = Telegram_Template::sanitize_mode((string) ($route['parse_mode'] ?? 'plain'));
+		$default_message = $template === '';
 		if ($template === '') {
-			$text = Submission_Presenter::telegram_message($request->payload, $request->form_id, $locale, $request->referer, (string) ($variables['form_name'] ?? ''));
-			$mode = 'plain';
+			$text = Submission_Presenter::telegram_message_for_state(
+				$request->payload,
+				$request->form_id,
+				$locale,
+				$request->referer,
+				(string) ($variables['form_name'] ?? ''),
+				$request->submission_id > 0 ? Repositories::repeat_submission_count($request->submission_id) : 0
+			);
+			$mode = 'HTML';
 		} else {
-			$text = Telegram_Template::render($template, $mode, $variables);
+			$text = Telegram_Template::render($template, $mode, Submission_Presenter::for_telegram_variables($variables, $request->form_id, $locale));
 		}
 		if ($text === '') return new Result(false, 0, __('Шаблон Telegram сформував порожнє повідомлення.', 'leadforms-go'), false);
 		if (! Telegram_Template::within_limit($text)) return new Result(false, 0, __('Повідомлення Telegram після підстановки змінних перевищує 4096 символів.', 'leadforms-go'), false);
-		$body = ['chat_id' => $settings['chat_id'], 'text' => $text];
+		$body = [
+			'chat_id' => $settings['chat_id'],
+			'text' => $text,
+			'link_preview_options' => wp_json_encode(['is_disabled' => true]),
+		];
 		if ($mode !== 'plain') $body['parse_mode'] = $mode;
 		$topic_id = absint(($route['topic_id'] ?? 0) ?: ($settings['topic_id'] ?? 0));
 		if ($topic_id > 0) $body['message_thread_id'] = $topic_id;
-		$buttons = Telegram_Template::render_buttons($this->localized_buttons((array) ($route['buttons'] ?? []), $locale), $variables);
+		$fields = Submission_Presenter::telegram_fields($request->payload, $request->form_id, $locale);
+		$source_url = Telegram_Message_Formatter::source_url($request->payload, $request->referer);
+		$utility_buttons = Telegram_Interactions::utility_buttons(Telegram_Message_Formatter::copy_phone($fields), $source_url);
+		$custom_buttons = Telegram_Template::render_buttons($this->localized_buttons((array) ($route['buttons'] ?? []), $locale), $variables);
+		$persistent_buttons = array_merge($utility_buttons, $custom_buttons);
+		$buttons = $persistent_buttons;
 		$interactive = ! empty($route['interactive']);
 		$interaction_warning = '';
 		if ($interactive) {
@@ -97,7 +114,7 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 				$interactive = false;
 				$interaction_warning = $webhook->get_error_message();
 			} else {
-				$buttons = array_merge($buttons, Telegram_Interactions::action_buttons($request->delivery_id, $settings['token']));
+				$buttons = array_merge($utility_buttons, Telegram_Interactions::action_buttons($request->delivery_id, $settings['token']), $custom_buttons);
 			}
 		}
 		if ($buttons !== []) $body['reply_markup'] = wp_json_encode(['inline_keyboard' => $buttons]);
@@ -117,7 +134,8 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 			'chat_id' => $chat_id !== '' ? $chat_id : $settings['chat_id'],
 			'message_id' => $message_id,
 			'topic_id' => $topic_id,
-			'custom_keyboard' => Telegram_Template::render_buttons($this->localized_buttons((array) ($route['buttons'] ?? []), $locale), $variables),
+			'custom_keyboard' => $persistent_buttons,
+			'default_message' => $default_message,
 		]);
 	}
 

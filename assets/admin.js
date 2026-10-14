@@ -70,6 +70,10 @@ class LeadFormsGoAdmin {
 		this.faCatalog = document.querySelector('[data-lfg-fa-catalog]');
 		this.translationsInput = document.querySelector('[data-lfg-translations]');
 		this.defaultLocaleInput = document.querySelector('[data-lfg-default-locale]');
+		this.languageTabs = document.querySelector('.lfg-language-tabs');
+		this.languageNameInput = document.querySelector('[data-lfg-language-name]');
+		this.languageCodeInput = document.querySelector('[data-lfg-language-code]');
+		this.languageResult = document.querySelector('[data-lfg-language-result]');
 		this.preview = document.querySelector('[data-lfg-preview]');
 		this.messageFields = document.querySelector('[data-lfg-message-fields]');
 		if (!this.modeInput || !this.schemaInput || !this.canvas) return;
@@ -79,6 +83,7 @@ class LeadFormsGoAdmin {
 		if (!this.translations || Array.isArray(this.translations) || typeof this.translations !== 'object') this.translations = {};
 		this.currentLocale = this.defaultLocaleInput?.value || 'uk_UA';
 		this.hydrateFieldKeys();
+		this.normalizeFieldTypes();
 		document.querySelectorAll('[data-lfg-locale]').forEach((button) => this.ensureTranslation(button.dataset.lfgLocale));
 		this.ensureTranslation(this.currentLocale);
 		this.setMode(this.modeInput.value || 'visual');
@@ -105,7 +110,7 @@ class LeadFormsGoAdmin {
 			this.renderPreview();
 		});
 		this.updateButtonIconPanels();
-		this.defaultLocaleInput?.addEventListener('change', () => { this.updateLocaleProgress(); this.syncCodePreview(); });
+		this.defaultLocaleInput?.addEventListener('change', () => this.renderBuilder());
 	}
 
 	hydrateFieldKeys() {
@@ -115,7 +120,17 @@ class LeadFormsGoAdmin {
 		this.schema.forEach((field) => {
 			if (field.key) return;
 			const match = templates.find((item) => item.field.type === field.type && item.field.name === field.name);
-			field.key = match?.key || field.type || 'field';
+			const nameMatches = templates.filter((item) => item.field.name === field.name);
+			field.key = match?.key || (nameMatches.length === 1 ? nameMatches[0].key : '') || field.id || field.type || 'field';
+		});
+	}
+
+	normalizeFieldTypes() {
+		const allowed = new Set(['text', 'tel', 'email', 'textarea', 'checkbox', 'select', 'radio', 'hidden']);
+		this.schema.forEach((field) => {
+			const key = String(field.key || field.id || '').replaceAll('-', '_').replace(/_\d+$/, '');
+			const type = String(field.type || '').trim().toLowerCase();
+			field.type = ['select', 'radio'].includes(key) ? key : (allowed.has(type) ? type : 'text');
 		});
 	}
 
@@ -138,6 +153,10 @@ class LeadFormsGoAdmin {
 		if (localeButton) this.setLocale(localeButton.dataset.lfgLocale);
 		const copyLanguage = event.target.closest('[data-lfg-copy-language]');
 		if (copyLanguage) this.copyDefaultLanguage();
+		const addLanguage = event.target.closest('[data-lfg-add-language]');
+		if (addLanguage) this.addLanguage();
+		const removeLanguage = event.target.closest('[data-lfg-remove-language]');
+		if (removeLanguage) this.removeLanguage(removeLanguage.dataset.lfgRemoveLanguage);
 		const button = event.target.closest('[data-lfg-test]');
 		if (button) await this.testConnector(button);
 		const googleUpload = event.target.closest('[data-lfg-google-upload]');
@@ -225,6 +244,76 @@ class LeadFormsGoAdmin {
 		return translation;
 	}
 
+	normalizeLocale(value) {
+		const parts = String(value || '').trim().replaceAll('-', '_').split('_', 2);
+		const language = (parts[0] || '').toLowerCase();
+		const region = (parts[1] || '').toUpperCase();
+		if (!/^[a-z]{2,3}$/.test(language) || (region && !/^[A-Z]{2}$/.test(region))) return '';
+		return region ? `${language}_${region}` : language;
+	}
+
+	setLanguageResult(message = '', error = false) {
+		if (!this.languageResult) return;
+		this.languageResult.textContent = message;
+		this.languageResult.classList.toggle('is-error', error);
+	}
+
+	addLanguage() {
+		const name = String(this.languageNameInput?.value || '').trim();
+		const locale = this.normalizeLocale(this.languageCodeInput?.value || '');
+		if (!name || !locale) {
+			this.setLanguageResult(this.config.builder.invalidLocale, true);
+			return;
+		}
+		if (document.querySelector(`[data-lfg-locale="${CSS.escape(locale)}"]`)) {
+			this.setLanguageResult(this.config.builder.duplicateLocale, true);
+			return;
+		}
+		if (document.querySelectorAll('[data-lfg-remove-language]').length >= this.config.builder.maxCustomLocales) {
+			this.setLanguageResult(this.config.builder.maxLocalesMessage, true);
+			return;
+		}
+		this.translations[locale] = { language_name: name, submit_label: '', messages: {}, fields: {} };
+		this.schema.forEach((field) => { this.translations[locale].fields[field.key] = { label: '', placeholder: '', options: [] }; });
+
+		const item = document.createElement('span');
+		item.className = 'lfg-language-tab-item is-custom';
+		item.dataset.lfgLanguageItem = locale;
+		const tab = document.createElement('button');
+		tab.type = 'button'; tab.className = 'lfg-language-tab'; tab.dataset.lfgLocale = locale; tab.setAttribute('role', 'tab');
+		const label = document.createElement('span'); label.dataset.lfgLocaleLabel = ''; label.textContent = name;
+		const progress = document.createElement('small'); progress.dataset.lfgLocaleProgress = '';
+		tab.append(label, progress);
+		const remove = document.createElement('button');
+		remove.type = 'button'; remove.className = 'lfg-language-remove'; remove.dataset.lfgRemoveLanguage = locale; remove.setAttribute('aria-label', this.config.builder.removeLanguage);
+		const icon = document.createElement('span'); icon.className = 'dashicons dashicons-no-alt'; icon.setAttribute('aria-hidden', 'true'); remove.append(icon);
+		item.append(tab, remove); this.languageTabs?.append(item);
+		const option = document.createElement('option'); option.value = locale; option.textContent = name; this.defaultLocaleInput?.append(option);
+		if (this.languageNameInput) this.languageNameInput.value = '';
+		if (this.languageCodeInput) this.languageCodeInput.value = '';
+		this.setLanguageResult();
+		this.syncTranslations();
+		this.setLocale(locale);
+	}
+
+	removeLanguage(locale) {
+		if (!locale || !this.translations[locale]) return;
+		if (this.defaultLocaleInput?.value === locale) {
+			this.setLanguageResult(this.config.builder.primaryLanguageRemove, true);
+			return;
+		}
+		if (!window.confirm(this.config.builder.removeLanguageConfirm)) return;
+		delete this.translations[locale];
+		document.querySelector(`[data-lfg-language-item="${CSS.escape(locale)}"]`)?.remove();
+		this.defaultLocaleInput?.querySelector(`option[value="${CSS.escape(locale)}"]`)?.remove();
+		if (this.currentLocale === locale) {
+			this.currentLocale = this.defaultLocaleInput?.value || 'uk_UA';
+			this.submitLabelInput.value = this.ensureTranslation(this.currentLocale).submit_label || '';
+		}
+		this.setLanguageResult();
+		this.renderBuilder();
+	}
+
 	fieldTranslation(field, locale = this.currentLocale) {
 		const translation = this.ensureTranslation(locale);
 		translation.fields[field.key] ||= { label: '', placeholder: '', options: [] };
@@ -234,7 +323,28 @@ class LeadFormsGoAdmin {
 	resolvedFieldTranslation(field, locale = this.currentLocale) {
 		const current = this.fieldTranslation(field, locale);
 		const fallback = this.ensureTranslation(this.defaultLocaleInput?.value || 'uk_UA').fields[field.key] || {};
-		return { label: current.label || fallback.label || field.label || field.key, placeholder: current.placeholder || fallback.placeholder || field.placeholder || '', options: current.options?.length ? current.options : (fallback.options || field.options || []) };
+		return {
+			label: current.label || fallback.label || field.label || field.key,
+			placeholder: current.placeholder || fallback.placeholder || field.placeholder || '',
+			options: (field.options || []).map((option, index) => current.options?.[index] || fallback.options?.[index] || option),
+		};
+	}
+
+	nextOptionKey(index, used) {
+		let suffix = index + 1;
+		let key = `option_${suffix}`;
+		while (used.has(key)) key = `option_${++suffix}`;
+		used.add(key);
+		return key;
+	}
+
+	syncOptionTranslations(field) {
+		const fallback = this.resolvedFieldTranslation(field, this.defaultLocaleInput?.value || 'uk_UA').options;
+		Object.values(this.translations).forEach((translation) => {
+			const fieldText = translation?.fields?.[field.key];
+			if (!fieldText) return;
+			fieldText.options = (field.options || []).map((option, index) => fieldText.options?.[index] || fallback[index] || option);
+		});
 	}
 
 	setLocale(locale) {
@@ -248,7 +358,9 @@ class LeadFormsGoAdmin {
 	copyDefaultLanguage() {
 		const sourceLocale = this.defaultLocaleInput?.value || 'uk_UA';
 		if (this.currentLocale === sourceLocale || !window.confirm(this.config.builder.copyLanguageConfirm)) return;
+		const languageName = this.translations[this.currentLocale]?.language_name || '';
 		this.translations[this.currentLocale] = JSON.parse(JSON.stringify(this.ensureTranslation(sourceLocale)));
+		if (languageName) this.translations[this.currentLocale].language_name = languageName;
 		this.submitLabelInput.value = this.translations[this.currentLocale].submit_label || '';
 		this.renderBuilder();
 	}
@@ -478,17 +590,26 @@ class LeadFormsGoAdmin {
 		if (['select', 'radio'].includes(field.type)) {
 			const optionsLabel = document.createElement('label');
 			const title = document.createElement('strong'); title.textContent = this.config.builder.options;
-			const help = document.createElement('small'); help.textContent = this.config.builder.optionsHelp;
-			const options = document.createElement('textarea'); options.rows = 4; options.value = (fieldText.options?.length ? fieldText.options : (field.options || [])).join('\n');
+			const help = document.createElement('small');
+			help.textContent = this.currentLocale === (this.defaultLocaleInput?.value || 'uk_UA') ? this.config.builder.optionsHelp : this.config.builder.optionsTranslationHelp;
+			const options = document.createElement('textarea'); options.rows = 4; options.value = this.resolvedFieldTranslation(field).options.join('\n');
 			options.addEventListener('input', () => {
-				const labels = options.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 50);
-				this.fieldTranslation(field).options = labels;
-				if (this.currentLocale === (this.defaultLocaleInput?.value || 'uk_UA')) {
-					const used = new Set();
-					field.options = labels.map((value, optionIndex) => { let key = value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `option_${optionIndex + 1}`; while (used.has(key)) key = `${key}_${optionIndex + 1}`; used.add(key); return key; });
+				const defaultLocale = this.defaultLocaleInput?.value || 'uk_UA';
+				const rawLabels = options.value.split(/\r?\n/).map((value) => value.trim()).slice(0, 50);
+				if (this.currentLocale === defaultLocale) {
+					const labels = rawLabels.filter(Boolean);
+					const previous = Array.isArray(field.options) ? field.options : [];
+					const used = new Set(previous);
+					field.options = labels.map((value, optionIndex) => previous[optionIndex] || this.nextOptionKey(optionIndex, used));
+					this.fieldTranslation(field).options = labels;
+					this.syncOptionTranslations(field);
+				} else {
+					const fallback = this.resolvedFieldTranslation(field, defaultLocale).options;
+					this.fieldTranslation(field).options = (field.options || []).map((option, optionIndex) => rawLabels[optionIndex] || fallback[optionIndex] || option);
 				}
 				this.syncTranslations(); this.syncSchema(); this.syncCodePreview(); this.renderPreview();
 			});
+			options.addEventListener('blur', () => { options.value = this.resolvedFieldTranslation(field).options.join('\n'); });
 			optionsLabel.append(title, help, options); fields.append(optionsLabel);
 		}
 		if (field.type === 'hidden') {

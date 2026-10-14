@@ -6,7 +6,7 @@ namespace LeadFormsGo;
 
 final class Submission_Validator
 {
-	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'ttclid', 'landing_page', 'document_referrer', 'visited_at'];
+	private const ATTRIBUTION_FIELDS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', 'gclid', 'fbclid', 'ttclid', 'landing_page', 'document_referrer', 'visited_at'];
 	private const MAX_PAYLOAD_FIELDS = 50;
 	private const MAX_PAYLOAD_KEY_LENGTH = 190;
 	private const MAX_PAYLOAD_VALUE_LENGTH = 1000;

@@ -1,10 +1,10 @@
 {
   "name": "leadforms-go",
-  "version": "1.8.0",
+  "version": "1.8.10",
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "php tests/run.php",
+    "test": "php tests/run.php && php tests/assignment-run.php && php tests/site-transfer-run.php && php tests/telegram-alert-run.php && php tests/route-health-run.php",
     "release": "npm run build && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1"
   }
 }

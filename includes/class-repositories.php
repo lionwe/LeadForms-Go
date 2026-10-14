@@ -24,6 +24,10 @@ final class Repositories
 	public static function save_form(int $id, string $name, string $code, string $editor_mode = 'code', array $schema = [], string $submit_label = 'Надіслати', string $default_locale = Form_Translations::DEFAULT_LOCALE, array $translations = [], bool $active = true, array $button_icon = [], array $routing_config = [], array $success = []): int|false
 	{
 		$now = current_time('mysql');
+		$translations = Form_Translations::sanitize($translations);
+		$locales = Form_Translations::locales($translations);
+		$default_locale = Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE;
+		if (! isset($locales[$default_locale])) $default_locale = Form_Translations::DEFAULT_LOCALE;
 		$data = [
 			'name' => $name,
 			'code' => $code,
@@ -31,9 +35,9 @@ final class Repositories
 			'form_schema' => wp_json_encode($schema, JSON_UNESCAPED_UNICODE),
 			'submit_label' => $submit_label,
 			'button_icon' => wp_json_encode(Form_Builder::sanitize_button_icon($button_icon), JSON_UNESCAPED_UNICODE),
-			'default_locale' => Form_Translations::normalize_locale($default_locale) ?: Form_Translations::DEFAULT_LOCALE,
-			'translations' => wp_json_encode(Form_Translations::sanitize($translations), JSON_UNESCAPED_UNICODE),
-			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema), JSON_UNESCAPED_UNICODE),
+			'default_locale' => $default_locale,
+			'translations' => wp_json_encode($translations, JSON_UNESCAPED_UNICODE),
+			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema, $locales), JSON_UNESCAPED_UNICODE),
 			'routing_version' => Route_Config::VERSION,
 			'success_action' => in_array($success['action'] ?? '', ['message', 'hide', 'redirect'], true) ? $success['action'] : 'message',
 			'success_redirect_url' => self::safe_redirect_url((string) ($success['redirect_url'] ?? '')),
@@ -256,13 +260,28 @@ final class Repositories
 		return (new Delivery_Repository())->find($delivery_id);
 	}
 
-	public static function set_lead_state(int $submission_id, string $state): bool
+	public static function set_lead_state(int $submission_id, string $state, string $actor = '', string $actor_telegram_id = ''): bool
 	{
 		global $wpdb;
-		if (! in_array($state, ['new', 'acknowledged', 'spam'], true)) return false;
+		if (! in_array($state, ['new', 'acknowledged', 'follow_up', 'completed', 'rejected', 'spam'], true)) return false;
 		$table = Database::tables()['submissions'];
-		$data = ['lead_state' => $state];
-		$formats = ['%s'];
+		$data = [
+			'lead_state' => $state,
+			'status_changed_by' => substr(sanitize_text_field($actor), 0, 255),
+			'status_changed_by_telegram_id' => substr(preg_replace('/[^0-9-]/', '', $actor_telegram_id) ?: '', 0, 32),
+			'status_changed_at' => $actor !== '' ? current_time('mysql') : null,
+		];
+		$formats = ['%s', '%s', '%s', '%s'];
+		if ($state === 'new') {
+			$data['assigned_to'] = '';
+			$data['assigned_to_telegram_id'] = '';
+			$data['assigned_by'] = '';
+			$data['assigned_by_telegram_id'] = '';
+			$data['transfer_requested_by'] = '';
+			$data['transfer_requested_by_telegram_id'] = '';
+			$data['transfer_requested_at'] = null;
+			array_push($formats, '%s', '%s', '%s', '%s', '%s', '%s', '%s');
+		}
 		if ($state === 'acknowledged') {
 			$data['acknowledged_at'] = current_time('mysql');
 			$formats[] = '%s';
@@ -279,12 +298,114 @@ final class Repositories
 		return true;
 	}
 
+	/** @return array{status:string,owner:string,requested_owner:string} */
+	public static function claim_lead(int $submission_id, string $actor, string $actor_telegram_id): array
+	{
+		global $wpdb;
+		$table = Database::tables()['submissions'];
+		$actor = substr(sanitize_text_field($actor), 0, 255);
+		$actor_telegram_id = substr(preg_replace('/[^0-9-]/', '', $actor_telegram_id) ?: '', 0, 32);
+		if ($submission_id <= 0 || $actor_telegram_id === '') return ['status' => 'invalid_actor', 'owner' => '', 'requested_owner' => ''];
+		$submission = $wpdb->get_row($wpdb->prepare(
+			"SELECT lead_state, assigned_to, assigned_to_telegram_id, transfer_requested_by_telegram_id FROM {$table} WHERE id = %d",
+			$submission_id
+		), ARRAY_A);
+		if (! is_array($submission)) return ['status' => 'missing', 'owner' => '', 'requested_owner' => ''];
+
+		$owner_id = (string) ($submission['assigned_to_telegram_id'] ?? '');
+		$owner = (string) ($submission['assigned_to'] ?? '');
+		if ($owner_id !== '' && ! hash_equals($owner_id, $actor_telegram_id)) {
+			if ((string) ($submission['transfer_requested_by_telegram_id'] ?? '') !== '') {
+				return ['status' => 'transfer_pending', 'owner' => $owner, 'requested_owner' => (string) $submission['transfer_requested_by_telegram_id']];
+			}
+			$updated = $wpdb->query($wpdb->prepare(
+				"UPDATE {$table} SET transfer_requested_by = %s, transfer_requested_by_telegram_id = %s, transfer_requested_at = %s WHERE id = %d AND assigned_to_telegram_id = %s AND transfer_requested_by_telegram_id = ''",
+				$actor,
+				$actor_telegram_id,
+				current_time('mysql'),
+				$submission_id,
+				$owner_id
+			));
+			return $updated === 1
+				? ['status' => 'transfer_requested', 'owner' => $owner, 'requested_owner' => $actor]
+				: ['status' => 'conflict', 'owner' => $owner, 'requested_owner' => ''];
+		}
+
+		if ($owner_id === $actor_telegram_id && ($submission['lead_state'] ?? '') === 'acknowledged') {
+			return ['status' => 'already_owner', 'owner' => $owner, 'requested_owner' => ''];
+		}
+
+		$now = current_time('mysql');
+		$updated = $wpdb->query($wpdb->prepare(
+			"UPDATE {$table} SET lead_state = 'acknowledged', acknowledged_at = %s, status_changed_by = %s, status_changed_by_telegram_id = %s, status_changed_at = %s, assigned_to = %s, assigned_to_telegram_id = %s, assigned_by = %s, assigned_by_telegram_id = %s, transfer_requested_by = '', transfer_requested_by_telegram_id = '', transfer_requested_at = NULL WHERE id = %d AND lead_state = %s AND assigned_to_telegram_id = %s",
+			$now,
+			$actor,
+			$actor_telegram_id,
+			$now,
+			$actor,
+			$actor_telegram_id,
+			$actor,
+			$actor_telegram_id,
+			$submission_id,
+			(string) $submission['lead_state'],
+			$owner_id
+		));
+		return $updated === 1
+			? ['status' => 'claimed', 'owner' => $actor, 'requested_owner' => '']
+			: ['status' => 'conflict', 'owner' => $owner, 'requested_owner' => ''];
+	}
+
+	/** @return array{status:string,owner:string} */
+	public static function approve_lead_transfer(int $submission_id, string $actor, string $actor_telegram_id): array
+	{
+		return self::resolve_lead_transfer($submission_id, $actor, $actor_telegram_id, true);
+	}
+
+	/** @return array{status:string,owner:string} */
+	public static function reject_lead_transfer(int $submission_id, string $actor, string $actor_telegram_id): array
+	{
+		return self::resolve_lead_transfer($submission_id, $actor, $actor_telegram_id, false);
+	}
+
+	/** @return array{status:string,owner:string} */
+	private static function resolve_lead_transfer(int $submission_id, string $actor, string $actor_telegram_id, bool $approve): array
+	{
+		global $wpdb;
+		$table = Database::tables()['submissions'];
+		$actor = substr(sanitize_text_field($actor), 0, 255);
+		$actor_telegram_id = substr(preg_replace('/[^0-9-]/', '', $actor_telegram_id) ?: '', 0, 32);
+		$submission = $wpdb->get_row($wpdb->prepare(
+			"SELECT assigned_to, assigned_to_telegram_id, transfer_requested_by, transfer_requested_by_telegram_id FROM {$table} WHERE id = %d",
+			$submission_id
+		), ARRAY_A);
+		if (! is_array($submission)) return ['status' => 'missing', 'owner' => ''];
+		if ($actor_telegram_id === '' || ! hash_equals((string) ($submission['assigned_to_telegram_id'] ?? ''), $actor_telegram_id)) {
+			return ['status' => 'unauthorized', 'owner' => (string) ($submission['assigned_to'] ?? '')];
+		}
+		$requested_id = (string) ($submission['transfer_requested_by_telegram_id'] ?? '');
+		$requested_owner = (string) ($submission['transfer_requested_by'] ?? '');
+		if ($requested_id === '') return ['status' => 'no_request', 'owner' => (string) ($submission['assigned_to'] ?? '')];
+
+		$now = current_time('mysql');
+		if ($approve) {
+			$sql = "UPDATE {$table} SET assigned_to = %s, assigned_to_telegram_id = %s, assigned_by = %s, assigned_by_telegram_id = %s, status_changed_by = %s, status_changed_by_telegram_id = %s, status_changed_at = %s, transfer_requested_by = '', transfer_requested_by_telegram_id = '', transfer_requested_at = NULL WHERE id = %d AND assigned_to_telegram_id = %s AND transfer_requested_by_telegram_id = %s";
+			$args = [$requested_owner, $requested_id, $actor, $actor_telegram_id, $actor, $actor_telegram_id, $now, $submission_id, $actor_telegram_id, $requested_id];
+		} else {
+			$sql = "UPDATE {$table} SET status_changed_by = %s, status_changed_by_telegram_id = %s, status_changed_at = %s, transfer_requested_by = '', transfer_requested_by_telegram_id = '', transfer_requested_at = NULL WHERE id = %d AND assigned_to_telegram_id = %s AND transfer_requested_by_telegram_id = %s";
+			$args = [$actor, $actor_telegram_id, $now, $submission_id, $actor_telegram_id, $requested_id];
+		}
+		$updated = $wpdb->query($wpdb->prepare($sql, $args));
+		return $updated === 1
+			? ['status' => $approve ? 'approved' : 'rejected', 'owner' => $approve ? $requested_owner : (string) $submission['assigned_to']]
+			: ['status' => 'conflict', 'owner' => (string) ($submission['assigned_to'] ?? '')];
+	}
+
 	public static function acknowledge_all_new(): int|false
 	{
 		global $wpdb;
 		$table = Database::tables()['submissions'];
 		$updated = $wpdb->query($wpdb->prepare(
-			"UPDATE {$table} SET lead_state = 'acknowledged', acknowledged_at = %s WHERE lead_state = 'new' AND is_test = 0",
+			"UPDATE {$table} SET lead_state = 'acknowledged', acknowledged_at = %s WHERE lead_state = 'new' AND is_test = 0 AND is_suspected_bot = 0",
 			current_time('mysql')
 		));
 		return is_int($updated) ? $updated : false;
@@ -361,6 +482,29 @@ final class Repositories
 		if (! is_array($row)) return null;
 		$row['deliveries'] = self::submission_deliveries($submission_id, true);
 		return $row;
+	}
+
+	public static function repeat_submission_count(int $submission_id): int
+	{
+		global $wpdb;
+		if ($submission_id <= 0) return 0;
+		$table = Database::tables()['submissions'];
+		$submission = $wpdb->get_row($wpdb->prepare(
+			"SELECT phone_fingerprint, email_fingerprint FROM {$table} WHERE id = %d",
+			$submission_id
+		), ARRAY_A);
+		if (! is_array($submission)) return 0;
+		$matches = [];
+		$args = [$submission_id];
+		foreach (['phone_fingerprint', 'email_fingerprint'] as $column) {
+			$value = (string) ($submission[$column] ?? '');
+			if ($value === '') continue;
+			$matches[] = "{$column} = %s";
+			$args[] = $value;
+		}
+		if ($matches === []) return 0;
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE id <= %d AND is_test = 0 AND is_suspected_bot = 0 AND lead_state <> 'spam' AND dedup_indexed = 1 AND (" . implode(' OR ', $matches) . ')';
+		return (int) $wpdb->get_var($wpdb->prepare($sql, $args));
 	}
 
 	public static function queue_summary(): array
@@ -452,9 +596,13 @@ final class Repositories
 		$conditions = [];
 		$args = [];
 		if (! empty($filters['exclude_test'])) $conditions[] = 's.is_test = 0';
+		if (! empty($filters['exclude_suspected_bot'])) $conditions[] = 's.is_suspected_bot = 0';
+		if (($filters['classification'] ?? '') === 'test') $conditions[] = 's.is_test = 1';
+		elseif (($filters['classification'] ?? '') === 'bot') $conditions[] = 's.is_suspected_bot = 1';
+		elseif (($filters['classification'] ?? '') === 'normal') $conditions[] = 's.is_test = 0 AND s.is_suspected_bot = 0';
 		if (! empty($filters['form_id'])) { $conditions[] = 's.form_id = %d'; $args[] = absint($filters['form_id']); }
 		if (! empty($filters['status']) && in_array($filters['status'], ['queued', 'processing', 'success', 'failed'], true)) { $conditions[] = 's.status = %s'; $args[] = $filters['status']; }
-		if (! empty($filters['lead_state']) && in_array($filters['lead_state'], ['new', 'acknowledged', 'spam'], true)) { $conditions[] = 's.lead_state = %s'; $args[] = $filters['lead_state']; }
+		if (! empty($filters['lead_state']) && in_array($filters['lead_state'], ['new', 'acknowledged', 'follow_up', 'completed', 'rejected', 'spam'], true)) { $conditions[] = 's.lead_state = %s'; $args[] = $filters['lead_state']; }
 		if (($filters['duplicates'] ?? '') === 'repeat') $conditions[] = 's.duplicate_of IS NOT NULL';
 		elseif (($filters['duplicates'] ?? '') === 'unique') $conditions[] = 's.duplicate_of IS NULL';
 		if (! empty($filters['connector'])) { $tables = Database::tables(); $key = sanitize_key($filters['connector']); $conditions[] = "EXISTS (SELECT 1 FROM {$tables['deliveries']} df WHERE df.submission_id = s.id AND (df.connector = %s OR df.connector LIKE %s))"; $args[] = $key; $args[] = $wpdb->esc_like($key . '__') . '%'; }

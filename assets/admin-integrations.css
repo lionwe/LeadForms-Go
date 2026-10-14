@@ -1,177 +1,567 @@
-.lfg-integrations {
+.leadforms-go-admin .lfg-integrations {
 	display: grid;
 	gap: 1rem;
 }
 
-.lfg-integrations__heading,
-.lfg-test-data,
-.lfg-route-card {
+.leadforms-go-admin .lfg-integrations__heading,
+.leadforms-go-admin .lfg-test-data,
+.leadforms-go-admin .lfg-route-card {
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.875rem;
+	background: var(--lfg-surface);
+	box-shadow: var(--lfg-shadow-sm);
+}
+
+.leadforms-go-admin .lfg-integrations__heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	padding: 1.125rem 1.25rem;
+	background: linear-gradient(135deg, var(--lfg-primary-soft), var(--lfg-surface) 70%);
+}
+
+.leadforms-go-admin .lfg-integrations__heading h2 {
+	margin: 0 0 0.25rem;
+	font-size: 1.125rem;
+}
+
+.leadforms-go-admin .lfg-integrations__heading p,
+.leadforms-go-admin .lfg-test-data p,
+.leadforms-go-admin .lfg-route-section__heading p,
+.leadforms-go-admin .lfg-route-locale p {
+	margin: 0;
+	color: var(--lfg-muted);
+	font-size: 0.8125rem;
+	line-height: 1.5;
+}
+
+.leadforms-go-admin .lfg-test-data {
+	padding: 0;
+}
+
+.leadforms-go-admin .lfg-test-data summary {
+	padding: 1rem 1.125rem;
+	font-weight: 600;
+	cursor: pointer;
+	list-style: none;
+}
+
+.leadforms-go-admin .lfg-test-data summary::-webkit-details-marker {
+	display: none;
+}
+
+.leadforms-go-admin .lfg-test-data summary::after {
+	float: right;
+	color: var(--lfg-muted);
+	content: "+";
+	font-size: 1.125rem;
+}
+
+.leadforms-go-admin .lfg-test-data[open] summary::after {
+	content: "−";
+}
+
+.leadforms-go-admin .lfg-test-data > p,
+.leadforms-go-admin .lfg-test-data__grid {
+	margin-right: 1.125rem;
+	margin-left: 1.125rem;
+}
+
+.leadforms-go-admin .lfg-test-data__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+	gap: 0.75rem;
+	margin-top: 1rem;
+	margin-bottom: 1.125rem;
+}
+
+.leadforms-go-admin .lfg-route-card {
+	overflow: hidden;
+}
+
+.leadforms-go-admin .lfg-route-card__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	min-height: 4.75rem;
+	padding: 0.75rem 1rem;
+	background: var(--lfg-surface);
+}
+
+.leadforms-go-admin .lfg-route-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--lfg-ink);
+	text-align: left;
+	cursor: pointer;
+}
+
+.leadforms-go-admin .lfg-route-toggle > span:nth-child(2) {
+	display: grid;
+	gap: 0.1875rem;
+	min-width: 0;
+}
+
+.leadforms-go-admin .lfg-route-toggle strong {
+	font-size: 1rem;
+}
+
+.leadforms-go-admin .lfg-route-toggle small {
+	overflow: hidden;
+	max-width: 34rem;
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	font-weight: 400;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.leadforms-go-admin .lfg-route-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 2.5rem;
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: 0.75rem;
+	background: var(--lfg-primary-soft);
+	color: var(--lfg-primary);
+	font-size: 1.25rem;
+}
+
+.leadforms-go-admin .lfg-route-chevron {
+	margin-left: 0.25rem;
+	color: var(--lfg-muted);
+	transition: transform 0.15s ease;
+}
+
+.leadforms-go-admin .lfg-route-toggle[aria-expanded="true"] .lfg-route-chevron {
+	transform: rotate(180deg);
+}
+
+.leadforms-go-admin .lfg-route-state {
+	display: grid;
+	grid-template-columns: auto minmax(11rem, 1fr);
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0;
+}
+
+.leadforms-go-admin .lfg-route-state > span {
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.leadforms-go-admin .lfg-route-state select {
+	width: auto;
+	max-width: 14rem;
+	margin: 0;
+}
+
+.leadforms-go-admin .lfg-route-card__body {
+	display: grid;
+	gap: 1rem;
+	padding: 1rem;
+	border-top: 1px solid var(--lfg-border);
+	background: var(--lfg-surface-soft);
+}
+
+.leadforms-go-admin .lfg-route-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.38fr);
+	align-items: start;
+	gap: 1rem;
+}
+
+.leadforms-go-admin .lfg-route-main {
+	display: grid;
+	gap: 0.875rem;
+	min-width: 0;
+}
+
+.leadforms-go-admin .lfg-route-section,
+.leadforms-go-admin .lfg-route-advanced,
+.leadforms-go-admin .lfg-route-preview {
 	border: 1px solid var(--lfg-border);
 	border-radius: 0.75rem;
 	background: var(--lfg-surface);
 }
 
-.lfg-integrations__heading {
+.leadforms-go-admin .lfg-route-section {
+	padding: 1rem;
+}
+
+.leadforms-go-admin .lfg-route-section > .lfg-route-actions {
+	margin-top: 0.875rem;
+}
+
+.leadforms-go-admin .lfg-route-section > .lfg-route-profiles,
+.leadforms-go-admin .lfg-route-section > .lfg-route-profiles__empty {
+	margin-bottom: 0.875rem;
+}
+
+.leadforms-go-admin .lfg-route-section--compact {
+	padding: 0.875rem 1rem;
+}
+
+.leadforms-go-admin .lfg-route-section__heading {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
-	padding: 1rem;
+	gap: 1rem;
+	margin-bottom: 0.875rem;
 }
 
-.lfg-integrations__heading h2 {
-	margin: 0 0 0.25rem;
+.leadforms-go-admin .lfg-route-section__heading h4,
+.leadforms-go-admin .lfg-route-locale h4 {
+	margin: 0 0 0.1875rem;
+	font-size: 0.875rem;
 }
 
-.lfg-integrations__heading p,
-.lfg-test-data p {
-	margin: 0;
-	color: var(--lfg-muted);
-}
-
-.lfg-test-data {
-	padding: 1rem;
-}
-
-.lfg-test-data summary {
-	cursor: pointer;
-	font-weight: 600;
-}
-
-.lfg-test-data[open] summary {
-	margin-bottom: 0.75rem;
-}
-
-.lfg-test-data__grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-	gap: 0.75rem;
-	margin-top: 1rem;
-}
-
-.lfg-test-data__grid label,
-.lfg-route-grid label,
-.lfg-route-locale label {
+.leadforms-go-admin .lfg-test-data__grid label,
+.leadforms-go-admin .lfg-route-grid label,
+.leadforms-go-admin .lfg-route-locale label {
 	display: grid;
 	gap: 0.375rem;
+	margin: 0;
 }
 
-.lfg-test-data__grid label > span,
-.lfg-route-grid label > span,
-.lfg-route-locale label > span {
+.leadforms-go-admin .lfg-test-data__grid label > span,
+.leadforms-go-admin .lfg-route-grid label > span,
+.leadforms-go-admin .lfg-route-locale label > span {
 	font-size: 0.75rem;
 	font-weight: 600;
 }
 
-.lfg-test-data__grid input,
-.lfg-route-grid input,
-.lfg-route-grid select,
-.lfg-route-locale textarea {
-	width: 100%;
+.leadforms-go-admin .lfg-route-grid label > small {
+	color: var(--lfg-muted);
+	font-size: 0.6875rem;
 }
 
-.lfg-route-card {
+.leadforms-go-admin .lfg-test-data__grid input,
+.leadforms-go-admin .lfg-route-grid input,
+.leadforms-go-admin .lfg-route-grid select,
+.leadforms-go-admin .lfg-route-locale textarea {
+	width: 100%;
+	max-width: none;
+	margin: 0;
+}
+
+.leadforms-go-admin .lfg-route-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+	gap: 0.75rem;
+}
+
+.leadforms-go-admin .lfg-route-grid--telegram {
+	grid-template-columns: minmax(13rem, 1.35fr) minmax(8rem, 0.65fr) minmax(10rem, 0.8fr);
+}
+
+.leadforms-go-admin .lfg-setting-switch {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 0;
+	cursor: pointer;
+}
+
+.leadforms-go-admin .lfg-setting-switch > input {
+	position: absolute;
+	overflow: hidden;
+	width: 0.0625rem;
+	height: 0.0625rem;
+	opacity: 0;
+}
+
+.leadforms-go-admin .lfg-setting-switch__control {
+	position: relative;
+	width: 2.5rem;
+	height: 1.5rem;
+	border: 1px solid var(--lfg-border-strong);
+	border-radius: 999rem;
+	background: var(--lfg-border-strong);
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.leadforms-go-admin .lfg-setting-switch__control::after {
+	position: absolute;
+	top: 0.1875rem;
+	left: 0.1875rem;
+	width: 1rem;
+	height: 1rem;
+	border-radius: 50%;
+	background: var(--lfg-surface);
+	box-shadow: var(--lfg-shadow-sm);
+	content: "";
+	transition: transform 0.15s ease;
+}
+
+.leadforms-go-admin .lfg-setting-switch > input:checked + .lfg-setting-switch__control {
+	border-color: var(--lfg-primary);
+	background: var(--lfg-primary);
+}
+
+.leadforms-go-admin .lfg-setting-switch > input:checked + .lfg-setting-switch__control::after {
+	transform: translateX(1rem);
+}
+
+.leadforms-go-admin .lfg-setting-switch > input:focus-visible + .lfg-setting-switch__control {
+	outline: 0.125rem solid var(--lfg-primary-soft);
+	outline-offset: 0.125rem;
+}
+
+.leadforms-go-admin .lfg-setting-switch__copy {
+	display: grid;
+	gap: 0.1875rem;
+}
+
+.leadforms-go-admin .lfg-setting-switch__copy strong {
+	font-size: 0.875rem;
+}
+
+.leadforms-go-admin .lfg-setting-switch__copy small {
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	font-weight: 400;
+	line-height: 1.45;
+}
+
+.leadforms-go-admin .lfg-setting-switch__state {
+	padding: 0.25rem 0.5rem;
+	border-radius: 999rem;
+	background: var(--lfg-surface-soft);
+	color: var(--lfg-muted);
+	font-size: 0.6875rem;
+	font-weight: 600;
+}
+
+.leadforms-go-admin .lfg-route-note {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.375rem;
+	margin: 0.75rem 0 0 3.25rem;
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	line-height: 1.45;
+}
+
+.leadforms-go-admin .lfg-route-note .dashicons {
+	width: 1rem;
+	height: 1rem;
+	color: var(--lfg-success);
+	font-size: 1rem;
+}
+
+.leadforms-go-admin .lfg-route-advanced {
 	overflow: hidden;
 }
 
-.lfg-route-card > header {
+.leadforms-go-admin .lfg-route-advanced > summary {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
-	padding: 1rem;
-	border-bottom: 1px solid var(--lfg-border);
-	background: var(--lfg-surface-soft);
+	padding: 0.875rem 1rem;
+	cursor: pointer;
+	list-style: none;
 }
 
-.lfg-route-card h3,
-.lfg-route-locale h4 {
-	margin: 0;
+.leadforms-go-admin .lfg-route-advanced > summary::-webkit-details-marker {
+	display: none;
 }
 
-.lfg-route-card__body {
+.leadforms-go-admin .lfg-route-advanced > summary > span:first-child {
+	display: grid;
+	gap: 0.1875rem;
+}
+
+.leadforms-go-admin .lfg-route-advanced > summary strong {
+	font-size: 0.875rem;
+}
+
+.leadforms-go-admin .lfg-route-advanced > summary small {
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
+.leadforms-go-admin .lfg-route-advanced > summary .dashicons {
+	color: var(--lfg-muted);
+	transition: transform 0.15s ease;
+}
+
+.leadforms-go-admin .lfg-route-advanced[open] > summary .dashicons {
+	transform: rotate(180deg);
+}
+
+.leadforms-go-admin .lfg-route-advanced__body {
 	display: grid;
 	gap: 1rem;
 	padding: 1rem;
+	border-top: 1px solid var(--lfg-border);
+	background: var(--lfg-surface-soft);
 }
 
-.lfg-route-grid {
+.leadforms-go-admin .lfg-route-variables {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-	gap: 0.75rem;
-}
-
-.lfg-route-variables,
-.lfg-route-actions,
-.lfg-route-test,
-.lfg-column-actions {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
 	gap: 0.5rem;
 }
 
-.lfg-route-variables code {
-	padding: 0.1875rem 0.375rem;
-	border-radius: 0.25rem;
+.leadforms-go-admin .lfg-route-variables > div {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.375rem;
 }
 
-.lfg-route-locale {
+.leadforms-go-admin .lfg-route-variables code {
+	padding: 0.1875rem 0.4375rem;
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.375rem;
+	background: var(--lfg-surface);
+	font-size: 0.6875rem;
+}
+
+.leadforms-go-admin .lfg-route-locale {
 	display: grid;
-	gap: 0.75rem;
+	gap: 0.875rem;
 	padding: 1rem;
 	border: 1px solid var(--lfg-border);
-	border-radius: 0.5rem;
+	border-radius: 0.625rem;
+	background: var(--lfg-surface);
 }
 
-.lfg-telegram-buttons,
-.lfg-sheet-columns,
-.lfg-crm-mapping {
+.leadforms-go-admin .lfg-telegram-buttons,
+.leadforms-go-admin .lfg-sheet-columns,
+.leadforms-go-admin .lfg-crm-mapping {
 	display: grid;
 	gap: 0.75rem;
 }
 
-.lfg-telegram-button-row {
+.leadforms-go-admin .lfg-sheet-columns__heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.leadforms-go-admin .lfg-sheet-columns__heading > div {
+	display: grid;
+	gap: 0.1875rem;
+}
+
+.leadforms-go-admin .lfg-sheet-columns__heading small {
+	color: var(--lfg-muted);
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
+.leadforms-go-admin .lfg-telegram-button-row {
 	display: grid;
 	grid-template-columns: minmax(8rem, 0.6fr) minmax(12rem, 1.4fr) auto;
 	gap: 0.5rem;
 }
 
-.lfg-crm-mapping-row {
+.leadforms-go-admin .lfg-crm-mapping-row {
 	display: grid;
 	grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1fr) auto;
 	gap: 0.5rem;
 	margin-bottom: 0.5rem;
 }
 
-.lfg-telegram-button-row input,
-.lfg-sheet-column-row input,
-.lfg-sheet-column-row select {
+.leadforms-go-admin .lfg-telegram-button-row input,
+.leadforms-go-admin .lfg-sheet-column-row input,
+.leadforms-go-admin .lfg-sheet-column-row select {
 	width: 100%;
 }
 
-.lfg-route-preview pre {
-	min-height: 5rem;
-	max-height: 18rem;
+.leadforms-go-admin .lfg-route-preview {
+	min-width: 0;
+	padding: 1rem;
+}
+
+.leadforms-go-admin .lfg-route-preview--sticky {
+	position: sticky;
+	top: 3rem;
+}
+
+.leadforms-go-admin .lfg-route-preview__heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+.leadforms-go-admin .lfg-route-preview__heading > div {
+	display: grid;
+	gap: 0.1875rem;
+}
+
+.leadforms-go-admin .lfg-route-preview__heading small {
+	color: var(--lfg-muted);
+	font-size: 0.6875rem;
+	font-weight: 400;
+}
+
+.leadforms-go-admin .lfg-route-preview__heading .dashicons {
+	color: var(--lfg-primary);
+}
+
+.leadforms-go-admin .lfg-route-preview pre {
+	min-height: 9rem;
+	max-height: 24rem;
 	overflow: auto;
-	margin: 0.5rem 0 0;
-	padding: 0.75rem;
-	border-radius: 0.375rem;
-	background: #1d2327;
-	color: #f6f7f7;
+	margin: 0.75rem 0 0;
+	padding: 0.875rem;
+	border: 1px solid var(--lfg-code-border);
+	border-radius: 0.5rem;
+	background: var(--lfg-code-background);
+	color: var(--lfg-code-text);
+	font-size: 0.75rem;
+	line-height: 1.55;
 	white-space: pre-wrap;
 }
 
-.lfg-route-actions input {
+.leadforms-go-admin .lfg-route-actions,
+.leadforms-go-admin .lfg-route-test,
+.leadforms-go-admin .lfg-column-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.leadforms-go-admin .lfg-route-actions input {
 	min-width: 14rem;
 }
 
-.lfg-sheet-columns__heading {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
+.leadforms-go-admin .lfg-route-test {
+	margin-top: 0.875rem;
+	padding-top: 0.875rem;
+	border-top: 1px solid var(--lfg-border);
 }
 
-.lfg-sheet-column-row {
+.leadforms-go-admin .lfg-route-test .button {
+	min-height: 2.25rem;
+}
+
+.leadforms-go-admin .lfg-route-test .is-sent {
+	color: var(--lfg-success);
+}
+
+.leadforms-go-admin .lfg-route-test .is-failed,
+.leadforms-go-admin .lfg-route-test .is-cancelled {
+	color: var(--lfg-error);
+}
+
+.leadforms-go-admin .lfg-sheet-column-row {
 	display: grid;
 	grid-template-columns: auto minmax(9rem, 1fr) minmax(8rem, 0.7fr) minmax(8rem, 1fr) minmax(8rem, 1fr) auto;
 	align-items: center;
@@ -179,77 +569,141 @@
 	margin-bottom: 0.5rem;
 	padding: 0.5rem;
 	border: 1px solid var(--lfg-border);
-	border-radius: 0.375rem;
-	background: var(--lfg-surface-soft);
+	border-radius: 0.5rem;
+	background: var(--lfg-surface);
 }
 
-.lfg-column-actions {
+.leadforms-go-admin .lfg-column-actions {
 	gap: 0.25rem;
 }
 
-.lfg-route-test {
-	padding-top: 0.75rem;
-	border-top: 1px solid var(--lfg-border);
+.leadforms-go-admin .lfg-route-profiles {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	margin: 0;
+	padding: 0.875rem;
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.625rem;
+	background: var(--lfg-surface);
 }
 
-.lfg-route-test .is-sent {
-	color: var(--lfg-success);
+.leadforms-go-admin .lfg-route-profiles legend {
+	padding: 0 0.375rem;
+	font-weight: 600;
 }
 
-.lfg-route-test .is-failed,
-.lfg-route-test .is-cancelled {
+.leadforms-go-admin .lfg-route-profiles label {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+.leadforms-go-admin .lfg-route-profiles__empty {
+	margin: 0;
+	padding: 0.75rem;
+	border-radius: 0.5rem;
+	background: var(--lfg-primary-soft);
+}
+
+.leadforms-go-admin .lfg-connection-profiles {
+	margin-top: 1rem;
+}
+
+.leadforms-go-admin .lfg-connection-profiles__grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	gap: 1rem;
+}
+
+.leadforms-go-admin .lfg-profile-card {
+	display: grid;
+	gap: 0.75rem;
+	padding: 1rem;
+	border: 1px solid var(--lfg-border);
+	border-radius: 0.75rem;
+}
+
+.leadforms-go-admin .lfg-profile-card label {
+	display: grid;
+	gap: 0.375rem;
+}
+
+.leadforms-go-admin .lfg-profile-card .lfg-profile-delete {
+	display: flex;
+	grid-template-columns: none;
+	align-items: center;
 	color: var(--lfg-error);
 }
 
 @media (max-width: 68rem) {
-	.lfg-sheet-column-row {
+	.leadforms-go-admin .lfg-route-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.leadforms-go-admin .lfg-route-preview--sticky {
+		position: static;
+	}
+
+	.leadforms-go-admin .lfg-sheet-column-row {
 		grid-template-columns: auto 1fr 1fr;
 	}
 
-	.lfg-sheet-column-row > *:nth-child(n + 4) {
+	.leadforms-go-admin .lfg-sheet-column-row > *:nth-child(n + 4) {
 		grid-column: 2 / -1;
 	}
 
-	.lfg-column-actions {
+	.leadforms-go-admin .lfg-column-actions {
 		grid-column: auto;
 	}
 }
 
 @media (max-width: 48.875rem) {
-	.lfg-editor-tabs {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		width: 100%;
-		max-width: 100%;
-	}
-
-	.lfg-editor-tab,
-	.lfg-builder,
-	.lfg-builder__palette,
-	.lfg-builder__workspace {
-		min-width: 0;
-	}
-
-	.lfg-builder__palette,
-	.lfg-builder__workspace {
-		width: auto;
-	}
-
-	.lfg-route-card > header,
-	.lfg-route-actions,
-	.lfg-route-test {
+	.leadforms-go-admin .lfg-route-card__header {
 		align-items: stretch;
 		flex-direction: column;
 	}
 
-	.lfg-telegram-button-row,
-	.lfg-crm-mapping-row,
-	.lfg-sheet-column-row {
+	.leadforms-go-admin .lfg-route-toggle small {
+		white-space: normal;
+	}
+
+	.leadforms-go-admin .lfg-route-state {
 		grid-template-columns: 1fr;
 	}
 
-	.lfg-sheet-column-row > * {
+	.leadforms-go-admin .lfg-route-state select {
+		width: 100%;
+		max-width: none;
+	}
+
+	.leadforms-go-admin .lfg-route-grid--telegram,
+	.leadforms-go-admin .lfg-telegram-button-row,
+	.leadforms-go-admin .lfg-crm-mapping-row,
+	.leadforms-go-admin .lfg-sheet-column-row {
+		grid-template-columns: 1fr;
+	}
+
+	.leadforms-go-admin .lfg-setting-switch {
+		grid-template-columns: auto 1fr;
+	}
+
+	.leadforms-go-admin .lfg-setting-switch__state {
+		display: none;
+	}
+
+	.leadforms-go-admin .lfg-route-note {
+		margin-left: 0;
+	}
+
+	.leadforms-go-admin .lfg-route-actions,
+	.leadforms-go-admin .lfg-route-test,
+	.leadforms-go-admin .lfg-sheet-columns__heading {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.leadforms-go-admin .lfg-sheet-column-row > * {
 		grid-column: auto;
 	}
 }
-.lfg-route-profiles{display:flex;flex-wrap:wrap;gap:.75rem;margin:0 0 1rem;padding:.875rem;border:1px solid var(--lfg-border);border-radius:.625rem}.lfg-route-profiles legend{padding:0 .375rem;font-weight:600}.lfg-route-profiles label{display:flex;align-items:center;gap:.375rem}.lfg-route-profiles__empty{margin:.5rem 0 1rem}.lfg-connection-profiles{margin-top:1rem}.lfg-connection-profiles__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem}.lfg-profile-card{display:grid;gap:.75rem;padding:1rem;border:1px solid var(--lfg-border);border-radius:.75rem}.lfg-profile-card label{display:grid;gap:.375rem}.lfg-profile-card .lfg-profile-delete{display:flex;grid-template-columns:none;align-items:center;color:#b32d2e}
