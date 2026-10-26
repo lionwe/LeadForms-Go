@@ -17,12 +17,24 @@ namespace {
 	function esc_url(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 	function admin_url(string $path): string { return 'https://example.com/wp-admin/' . $path; }
 	function wp_json_encode(mixed $value): string|false { return json_encode($value); }
+	function add_option(string $key, mixed $value, string $deprecated = '', mixed $autoload = null): bool
+	{
+		if (isset($GLOBALS['alert_locks'][$key])) return false;
+		$GLOBALS['alert_locks'][$key] = $value;
+		return true;
+	}
+	function get_option(string $key, mixed $default = false): mixed { return $GLOBALS['alert_locks'][$key] ?? $default; }
+	function delete_option(string $key): bool { unset($GLOBALS['alert_locks'][$key]); return true; }
 	function update_option(string $key, mixed $value, mixed $autoload = null): bool { $GLOBALS['alert_option'] = $value; return true; }
 	function wp_next_scheduled(string $hook): int|false { return $GLOBALS['alert_scheduled'] ?? false; }
 	function wp_schedule_single_event(int $timestamp, string $hook): bool { $GLOBALS['alert_scheduled'] = $timestamp; return true; }
 	function wp_remote_post(string $url, array $args): mixed
 	{
 		$GLOBALS['alert_requests'][] = ['url' => $url, 'args' => $args];
+		if (! empty($GLOBALS['alert_reenter'])) {
+			$GLOBALS['alert_reenter'] = false;
+			\LeadFormsGo\Telegram_Interactions::send_site_transfer_alert();
+		}
 		return array_shift($GLOBALS['alert_responses']);
 	}
 	function wp_remote_retrieve_body(array $response): string { return (string) ($response['body'] ?? ''); }
@@ -67,6 +79,16 @@ namespace {
 		&& str_contains((string) ($GLOBALS['alert_requests'][0]['args']['body']['text'] ?? ''), 'ввімкніть їх знову');
 	if (! $sent) {
 		fwrite(STDERR, "A disabled integration must still use stored Telegram credentials to send the site-transfer alert.\n");
+		exit(1);
+	}
+	$GLOBALS['alert_option']['telegram_alert_status'] = 'pending';
+	$GLOBALS['alert_option']['telegram_alert_attempts'] = 0;
+	$GLOBALS['alert_responses'] = [$success, $success];
+	$GLOBALS['alert_requests'] = [];
+	$GLOBALS['alert_reenter'] = true;
+	Telegram_Interactions::send_site_transfer_alert();
+	if (count($GLOBALS['alert_requests']) !== 1) {
+		fwrite(STDERR, "Concurrent alert execution must not send duplicate Telegram messages.\n");
 		exit(1);
 	}
 

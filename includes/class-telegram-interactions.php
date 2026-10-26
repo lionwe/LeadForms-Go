@@ -8,8 +8,10 @@ final class Telegram_Interactions
 {
 	public const REMINDER_HOOK = 'leadforms_go_telegram_reminder';
 	public const SITE_TRANSFER_ALERT_HOOK = 'leadforms_go_site_transfer_alert';
+	public const SITE_TRANSFER_LOCK_OPTION = 'leadforms_go_site_transfer_lock';
 	private const REMINDER_DELAY = 30 * MINUTE_IN_SECONDS;
 	private const API_TIMEOUT = 12;
+	private const SITE_TRANSFER_LOCK_TTL = 300;
 
 	public static function boot(): void
 	{
@@ -20,6 +22,16 @@ final class Telegram_Interactions
 	}
 
 	public static function send_site_transfer_alert(): void
+	{
+		if (! self::acquire_site_transfer_lock()) return;
+		try {
+			self::send_site_transfer_alert_locked();
+		} finally {
+			delete_option(self::SITE_TRANSFER_LOCK_OPTION);
+		}
+	}
+
+	private static function send_site_transfer_alert_locked(): void
 	{
 		$transfer = Database::site_transfer_notice();
 		if ($transfer === [] || ($transfer['telegram_alert_status'] ?? '') !== 'pending') return;
@@ -64,6 +76,16 @@ final class Telegram_Interactions
 		if (is_wp_error($result) && $attempts < 3 && ! wp_next_scheduled(self::SITE_TRANSFER_ALERT_HOOK)) {
 			wp_schedule_single_event(time() + (5 * MINUTE_IN_SECONDS), self::SITE_TRANSFER_ALERT_HOOK);
 		}
+	}
+
+	private static function acquire_site_transfer_lock(): bool
+	{
+		$now = time();
+		if (add_option(self::SITE_TRANSFER_LOCK_OPTION, $now, '', false)) return true;
+		$locked_at = (int) get_option(self::SITE_TRANSFER_LOCK_OPTION, 0);
+		if ($locked_at <= 0 || $now - $locked_at < self::SITE_TRANSFER_LOCK_TTL) return false;
+		delete_option(self::SITE_TRANSFER_LOCK_OPTION);
+		return add_option(self::SITE_TRANSFER_LOCK_OPTION, $now, '', false);
 	}
 
 	public static function register_route(): void

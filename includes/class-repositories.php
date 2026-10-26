@@ -40,7 +40,7 @@ final class Repositories
 			'routing_config' => wp_json_encode(Route_Config::sanitize($routing_config, $schema, $locales), JSON_UNESCAPED_UNICODE),
 			'routing_version' => Route_Config::VERSION,
 			'success_action' => in_array($success['action'] ?? '', ['message', 'hide', 'redirect'], true) ? $success['action'] : 'message',
-			'success_redirect_url' => self::safe_redirect_url((string) ($success['redirect_url'] ?? '')),
+			'success_redirect_url' => self::sanitize_redirect_url((string) ($success['redirect_url'] ?? '')),
 			'success_duration' => min(60, max(1, absint($success['duration'] ?? 4))),
 			'active' => $active ? 1 : 0,
 			'updated_at' => $now,
@@ -48,11 +48,14 @@ final class Repositories
 		return (new Form_Repository())->save($id, $data);
 	}
 
-	private static function safe_redirect_url(string $url): string
+	public static function sanitize_redirect_url(string $url): string
 	{
 		$url = esc_url_raw($url, ['http', 'https']);
 		if ($url === '') return '';
-		return wp_validate_redirect($url, '');
+		$parts = wp_parse_url($url);
+		if (! is_array($parts) || empty($parts['host']) || ! in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)) return '';
+		if (isset($parts['user']) || isset($parts['pass'])) return '';
+		return $url;
 	}
 
 	public static function delete_form(int $id): bool

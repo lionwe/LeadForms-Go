@@ -213,6 +213,7 @@ class PhoneMask {
 			}
 		}
 		if (this.prefixDigits && digits.startsWith(this.prefixDigits)) digits = digits.slice(this.prefixDigits.length);
+		if (this.country === 'UA') digits = digits.replace(/^0+/, '');
 		if (this.country) {
 			this.updateCountry();
 			digits = digits.slice(0, Number(this.countries[this.country].max || 15));

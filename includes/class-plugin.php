@@ -270,7 +270,7 @@ final class Plugin
 	private function success_data(array $form, string $message, int $submission_id, array $extra = []): array
 	{
 		$action = in_array($form['success_action'] ?? '', ['message', 'hide', 'redirect'], true) ? (string) $form['success_action'] : 'message';
-		$redirect = $action === 'redirect' ? wp_validate_redirect(esc_url_raw((string) ($form['success_redirect_url'] ?? '')), '') : '';
+		$redirect = $action === 'redirect' ? Repositories::sanitize_redirect_url((string) ($form['success_redirect_url'] ?? '')) : '';
 		if ($action === 'redirect' && $redirect === '') $action = 'message';
 		return array_merge([
 			'message' => $message,

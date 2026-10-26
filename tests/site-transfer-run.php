@@ -6,11 +6,25 @@ namespace {
 	$GLOBALS['test_options'] = [];
 	$GLOBALS['test_scheduled'] = [];
 	$GLOBALS['test_home_url'] = 'https://new.example/site/';
+	$GLOBALS['test_reenter_transfer'] = false;
 	function get_option(string $key, mixed $default = false): mixed { return $GLOBALS['test_options'][$key] ?? $default; }
+	function add_option(string $key, mixed $value, string $deprecated = '', mixed $autoload = null): bool
+	{
+		if (array_key_exists($key, $GLOBALS['test_options'])) return false;
+		$GLOBALS['test_options'][$key] = $value;
+		return true;
+	}
 	function update_option(string $key, mixed $value, mixed $autoload = null): bool { $GLOBALS['test_options'][$key] = $value; return true; }
 	function delete_option(string $key): bool { unset($GLOBALS['test_options'][$key]); return true; }
 	function home_url(string $path = '/'): string { return rtrim($GLOBALS['test_home_url'], '/') . $path; }
-	function esc_url_raw(string $url, array $protocols = []): string { return filter_var($url, FILTER_SANITIZE_URL); }
+	function esc_url_raw(string $url, array $protocols = []): string
+	{
+		if (! empty($GLOBALS['test_reenter_transfer']) && $url === 'https://old.example/site/') {
+			$GLOBALS['test_reenter_transfer'] = false;
+			$GLOBALS['protect_transfer']->invoke(null);
+		}
+		return filter_var($url, FILTER_SANITIZE_URL);
+	}
 	function untrailingslashit(string $value): string { return rtrim($value, '/'); }
 	function wp_parse_url(string $url, int $component = -1): mixed { return parse_url($url, $component); }
 	function wp_next_scheduled(string $hook): int|false { return $GLOBALS['test_scheduled'][$hook] ?? false; }
@@ -34,6 +48,7 @@ namespace LeadFormsGo {
 	final class Telegram_Interactions
 	{
 		public const SITE_TRANSFER_ALERT_HOOK = 'leadforms_go_site_transfer_alert';
+		public const SITE_TRANSFER_LOCK_OPTION = 'leadforms_go_site_transfer_lock';
 		public static int $send_attempts = 0;
 		public static function send_site_transfer_alert(): void { ++self::$send_attempts; }
 	}
@@ -43,6 +58,8 @@ namespace {
 	require dirname(__DIR__) . '/includes/class-database.php';
 	$GLOBALS['test_options']['leadforms_go_site_origin'] = 'https://old.example/site/';
 	$protect_transfer = new \ReflectionMethod(\LeadFormsGo\Database::class, 'protect_site_transfer');
+	$GLOBALS['protect_transfer'] = $protect_transfer;
+	$GLOBALS['test_reenter_transfer'] = true;
 	$protect_transfer->invoke(null);
 	$notice = \LeadFormsGo\Database::site_transfer_notice();
 	$assertions = [

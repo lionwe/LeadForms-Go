@@ -3,7 +3,7 @@
 /**
  * Plugin Name: LeadForms Go
  * Description: Керування формами та інтеграціями з Telegram, Google Sheets і G-PLUS CRM.
- * Version: 1.8.10
+ * Version: 1.8.11
  * Requires at least: 6.6
  * Requires PHP: 8.2
  * Author: lionwe
@@ -16,7 +16,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('LEADFORMS_GO_VERSION', '1.8.10');
+define('LEADFORMS_GO_VERSION', '1.8.11');
 define('LEADFORMS_GO_FILE', __FILE__);
 define('LEADFORMS_GO_DIR', plugin_dir_path(__FILE__));
 define('LEADFORMS_GO_URL', plugin_dir_url(__FILE__));
@@ -34,10 +34,10 @@ spl_autoload_register(static function (string $class): void {
 
 register_activation_hook(__FILE__, [LeadFormsGo\Database::class, 'activate']);
 register_deactivation_hook(__FILE__, [LeadFormsGo\Delivery_Queue::class, 'deactivate']);
-add_action('plugins_loaded', static function (): void {
+add_action('init', static function (): void {
 	load_plugin_textdomain('leadforms-go', false, dirname(plugin_basename(__FILE__)) . '/languages');
 	LeadFormsGo\Plugin::instance()->boot();
-});
+}, 0);
 
 if (! function_exists('leadforms_go_capture_submission')) {
 	function leadforms_go_capture_submission(array $data, ?int $form_id = null, string $referer = ''): int

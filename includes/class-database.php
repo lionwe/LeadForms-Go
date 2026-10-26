@@ -9,6 +9,7 @@ final class Database
 	private const SCHEMA_VERSION = '1.8.5';
 	private const SITE_ORIGIN_OPTION = 'leadforms_go_site_origin';
 	private const SITE_TRANSFER_OPTION = 'leadforms_go_site_transfer';
+	private const SITE_TRANSFER_LOCK_TTL = 300;
 
 	public static function tables(): array
 	{
@@ -299,35 +300,53 @@ final class Database
 
 	private static function protect_site_transfer(): void
 	{
-		$current = self::site_origin();
-		if ($current === '') return;
-		$previous = esc_url_raw((string) get_option(self::SITE_ORIGIN_OPTION, ''));
-		if ($previous === '') {
-			update_option(self::SITE_ORIGIN_OPTION, $current, false);
-			return;
-		}
-		if (hash_equals($previous, $current)) return;
-		if (self::same_site_origin($previous, $current)) {
-			update_option(self::SITE_ORIGIN_OPTION, $current, false);
-			return;
-		}
+		if (! self::acquire_site_transfer_lock()) return;
+		$send_alert = false;
+		try {
+			$current = self::site_origin();
+			if ($current === '') return;
+			$previous = esc_url_raw((string) get_option(self::SITE_ORIGIN_OPTION, ''));
+			if ($previous === '') {
+				update_option(self::SITE_ORIGIN_OPTION, $current, false);
+				return;
+			}
+			if (hash_equals($previous, $current)) return;
+			if (self::same_site_origin($previous, $current)) {
+				update_option(self::SITE_ORIGIN_OPTION, $current, false);
+				return;
+			}
 
-		Settings::disable_integrations();
-		$cancelled = Repositories::cancel_active_deliveries(__('Доставку скасовано після перенесення сайту. Перевірте інтеграції перед повторною відправкою.', 'leadforms-go'));
-		delete_option('leadforms_go_queue_pending');
-		update_option(self::SITE_ORIGIN_OPTION, $current, false);
-		update_option(self::SITE_TRANSFER_OPTION, [
-			'previous' => $previous,
-			'current' => $current,
-			'cancelled' => $cancelled,
-			'detected_at' => time(),
-			'telegram_alert_status' => 'pending',
-			'telegram_alert_attempts' => 0,
-		], false);
-		if (! wp_next_scheduled(Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK)) {
-			wp_schedule_single_event(time() + 30, Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK);
+			Settings::disable_integrations();
+			$cancelled = Repositories::cancel_active_deliveries(__('Доставку скасовано після перенесення сайту. Перевірте інтеграції перед повторною відправкою.', 'leadforms-go'));
+			delete_option('leadforms_go_queue_pending');
+			update_option(self::SITE_ORIGIN_OPTION, $current, false);
+			update_option(self::SITE_TRANSFER_OPTION, [
+				'previous' => $previous,
+				'current' => $current,
+				'cancelled' => $cancelled,
+				'detected_at' => time(),
+				'telegram_alert_status' => 'pending',
+				'telegram_alert_attempts' => 0,
+			], false);
+			if (! wp_next_scheduled(Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK)) {
+				wp_schedule_single_event(time() + 30, Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK);
+			}
+			$send_alert = true;
+		} finally {
+			delete_option(Telegram_Interactions::SITE_TRANSFER_LOCK_OPTION);
 		}
-		Telegram_Interactions::send_site_transfer_alert();
+		if ($send_alert) Telegram_Interactions::send_site_transfer_alert();
+	}
+
+	private static function acquire_site_transfer_lock(): bool
+	{
+		$option = Telegram_Interactions::SITE_TRANSFER_LOCK_OPTION;
+		$now = time();
+		if (add_option($option, $now, '', false)) return true;
+		$locked_at = (int) get_option($option, 0);
+		if ($locked_at <= 0 || $now - $locked_at < self::SITE_TRANSFER_LOCK_TTL) return false;
+		delete_option($option);
+		return add_option($option, $now, '', false);
 	}
 
 	private static function site_origin(): string
