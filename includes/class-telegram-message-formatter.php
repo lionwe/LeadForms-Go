@@ -15,7 +15,7 @@ final class Telegram_Message_Formatter
 
 	/**
 	 * @param array<int,array{key:string,label:string,type:string,value:mixed,raw_value:mixed}> $fields
-	 * @param array{locale?:string,form_name?:string,source_url?:string,document_referrer?:string,attribution?:array,repeat_count?:int,state?:string,actor?:string} $context
+	 * @param array{locale?:string,form_name?:string,source_url?:string,document_referrer?:string,attribution?:array,repeat_count?:int,state?:string,actor?:string,phone_link?:bool} $context
 	 */
 	public static function format(array $fields, array $context = []): string
 	{
@@ -37,17 +37,19 @@ final class Telegram_Message_Formatter
 		if (! in_array($state, ['new', 'acknowledged', 'follow_up', 'completed', 'rejected', 'spam'], true)) $state = 'new';
 		$repeat_count = max(0, (int) ($context['repeat_count'] ?? 0));
 		$actor = self::is_empty($context['actor'] ?? '') ? '' : self::clean_value($context['actor'] ?? '', 250);
+		$phone_link = ! empty($context['phone_link']);
 		$comment_limit = 1800;
 		$utm = $attribution;
 		$include_source_link = ! $direct_source;
 
-		$render = static function () use (&$data, $labels, $state, $repeat_count, $actor, &$source_label, $source_url, &$utm, &$comment_limit, &$include_source_link): string {
+		$render = static function () use (&$data, $labels, $state, $repeat_count, $actor, $phone_link, &$source_label, $source_url, &$utm, &$comment_limit, &$include_source_link): string {
 			return self::render(
 				$data,
 				$labels,
 				$state,
 				$repeat_count,
 				$actor,
+				$phone_link,
 				$source_label,
 				$include_source_link ? $source_url : '',
 				$utm,
@@ -101,6 +103,11 @@ final class Telegram_Message_Formatter
 		return '';
 	}
 
+	public static function as_rich_html(string $message): string
+	{
+		return str_replace(["\r\n", "\r", "\n"], '<br>', $message);
+	}
+
 	private static function partition(array $fields): array
 	{
 		$data = ['names' => [], 'phone' => '', 'email' => '', 'channels' => [], 'details' => [], 'comments' => []];
@@ -129,7 +136,7 @@ final class Telegram_Message_Formatter
 		return $data;
 	}
 
-	private static function render(array $data, array $labels, string $state, int $repeat_count, string $actor, string $source_label, string $source_url, array $utm, int $comment_limit): string
+	private static function render(array $data, array $labels, string $state, int $repeat_count, string $actor, bool $phone_link, string $source_label, string $source_url, array $utm, int $comment_limit): string
 	{
 		$title = match ($state) {
 			'acknowledged' => $labels['working_title'],
@@ -160,7 +167,13 @@ final class Telegram_Message_Formatter
 			$contact[] = self::escape($name['label']) . ': <b>' . self::escape($name['value']) . '</b>';
 		}
 		if ($data['names'] === [] && ($data['phone'] !== '' || $data['email'] !== '' || $data['channels'] !== [])) $contact[] = '<b>' . self::escape($labels['contacts']) . '</b>';
-		if ($data['phone'] !== '') $contact[] = self::escape($labels['phone']) . ': <code>' . self::escape($data['phone']) . '</code>';
+		if ($data['phone'] !== '') {
+			$tel = $phone_link ? self::telephone_uri($data['phone']) : '';
+			$phone = $tel !== ''
+				? '<a href="' . esc_attr($tel) . '">' . self::escape($data['phone']) . '</a>'
+				: '<code>' . self::escape($data['phone']) . '</code>';
+			$contact[] = self::escape($labels['phone']) . ': ' . $phone;
+		}
 		if ($data['email'] !== '') $contact[] = 'Email: ' . self::escape($data['email']);
 		foreach ($data['channels'] as $channel) $contact[] = self::escape($channel['label']) . ': ' . self::escape($channel['value']);
 		if ($contact !== []) $sections[] = implode("\n", $contact);
@@ -326,6 +339,15 @@ final class Telegram_Message_Formatter
 		$value = (string) preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', (string) $value);
 		$value = trim((string) preg_replace('/\R{3,}/u', "\n\n", $value));
 		return self::truncate($value, $maximum);
+	}
+
+	private static function telephone_uri(string $phone): string
+	{
+		$phone = trim($phone);
+		if ($phone === '' || preg_match('/^\+?[0-9\s().\/-]+$/u', $phone) !== 1) return '';
+		$digits = preg_replace('/[^0-9]/', '', $phone);
+		if (! is_string($digits) || strlen($digits) < 5 || strlen($digits) > 15) return '';
+		return 'tel:' . (str_starts_with($phone, '+') ? '+' : '') . $digits;
 	}
 
 	private static function valid_url(string $url): string

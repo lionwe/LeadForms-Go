@@ -57,6 +57,7 @@ final class Submission_Presenter
 			'repeat_count' => $repeat_count,
 			'state' => $state,
 			'actor' => $actor,
+			'phone_link' => true,
 		]);
 	}
 

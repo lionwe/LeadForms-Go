@@ -92,12 +92,16 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 		}
 		if ($text === '') return new Result(false, 0, __('Шаблон Telegram сформував порожнє повідомлення.', 'leadforms-go'), false);
 		if (! Telegram_Template::within_limit($text)) return new Result(false, 0, __('Повідомлення Telegram після підстановки змінних перевищує 4096 символів.', 'leadforms-go'), false);
-		$body = [
-			'chat_id' => $settings['chat_id'],
-			'text' => $text,
-			'link_preview_options' => wp_json_encode(['is_disabled' => true]),
-		];
-		if ($mode !== 'plain') $body['parse_mode'] = $mode;
+		$body = ['chat_id' => $settings['chat_id']];
+		$api_method = 'sendMessage';
+		if ($default_message) {
+			$api_method = 'sendRichMessage';
+			$body['rich_message'] = wp_json_encode(['html' => Telegram_Message_Formatter::as_rich_html($text)]);
+		} else {
+			$body['text'] = $text;
+			$body['link_preview_options'] = wp_json_encode(['is_disabled' => true]);
+			if ($mode !== 'plain') $body['parse_mode'] = $mode;
+		}
 		$topic_id = absint(($route['topic_id'] ?? 0) ?: ($settings['topic_id'] ?? 0));
 		if ($topic_id > 0) $body['message_thread_id'] = $topic_id;
 		$fields = Submission_Presenter::telegram_fields($request->payload, $request->form_id, $locale);
@@ -118,7 +122,7 @@ final class Telegram_Connector extends Abstract_Connector implements Contextual_
 			}
 		}
 		if ($buttons !== []) $body['reply_markup'] = wp_json_encode(['inline_keyboard' => $buttons]);
-		$response = wp_remote_post($this->endpoint($settings['token'], 'sendMessage'), $this->request_args(['body' => $body]));
+		$response = wp_remote_post($this->endpoint($settings['token'], $api_method), $this->request_args(['body' => $body]));
 		$response_body = is_wp_error($response) ? [] : json_decode(wp_remote_retrieve_body($response), true);
 		$message_id = is_array($response_body) ? absint($response_body['result']['message_id'] ?? 0) : 0;
 		$chat_id = is_array($response_body) ? (string) ($response_body['result']['chat']['id'] ?? '') : '';

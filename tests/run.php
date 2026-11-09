@@ -158,6 +158,12 @@ $minimal_message = Telegram_Message_Formatter::format($minimal_fields, ['locale'
 $assert(str_contains($minimal_message, '<b>Нова заявка</b>'), 'Minimal Telegram messages must use the compact HTML title.');
 $assert(str_contains($minimal_message, 'Ім’я: <b>Оксана</b>') && str_contains($minimal_message, 'Номер телефону: <code>+38 (050) 991-99-10</code>'), 'Minimal Telegram messages must label and emphasize the name and phone.');
 $assert(! str_contains($minimal_message, 'Деталі звернення') && ! str_contains($minimal_message, 'Джерело'), 'Empty Telegram sections must not be rendered.');
+$linked_phone = Submission_Presenter::telegram_message_for_state(['phone' => '+380 48 488 88 84'], 0, 'uk_UA', '');
+$assert(str_contains($linked_phone, 'Номер телефону: <a href="tel:+380484888884">+380 48 488 88 84</a>'), 'Default Telegram submissions must render valid phone numbers as tel links.');
+$linked_status = Submission_Presenter::telegram_message_for_state(['phone' => '+380 48 488 88 84'], 0, 'uk_UA', '', '', 0, 'acknowledged', '@manager');
+$assert(str_contains($linked_status, '<b>Заявка в роботі</b>') && str_contains($linked_status, 'href="tel:+380484888884"'), 'Status message updates must retain the clickable phone link.');
+$rich_linked_phone = Telegram_Message_Formatter::as_rich_html($linked_phone);
+$assert(str_contains($rich_linked_phone, '<br><br>') && str_contains($rich_linked_phone, 'href="tel:+380484888884"'), 'Telegram Rich HTML must preserve blank lines and tel links.');
 
 $full_fields = array_merge($minimal_fields, [
 	['key' => 'last_name', 'label' => 'Прізвище', 'type' => 'text', 'value' => 'Рад', 'raw_value' => 'Рад'],

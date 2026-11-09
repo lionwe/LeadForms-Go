@@ -36,6 +36,7 @@ namespace LeadFormsGo {
 	final class Settings
 	{
 		public static bool $disabled = false;
+		public static function section(string $section): array { return ['enabled' => $section === 'telegram']; }
 		public static function disable_integrations(): void { self::$disabled = true; }
 	}
 
@@ -68,11 +69,12 @@ namespace {
 		$notice['current'] === 'https://new.example/site',
 		$notice['cancelled'] === 4,
 		$notice['telegram_alert_status'] === 'pending',
-		isset($GLOBALS['test_scheduled'][\LeadFormsGo\Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK]),
+		$notice['reminder_integrations'] === ['telegram'],
+		! isset($GLOBALS['test_scheduled'][\LeadFormsGo\Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK]),
 		\LeadFormsGo\Telegram_Interactions::$send_attempts === 1,
 	];
 	if (in_array(false, $assertions, true)) {
-		fwrite(STDERR, "Site transfer must disable integrations, cancel active deliveries, store a notice, and schedule the Telegram alert.\n");
+		fwrite(STDERR, "Site transfer must disable integrations, cancel active deliveries, store a notice, and send the Telegram alert once.\n");
 		exit(1);
 	}
 	$GLOBALS['test_options'] = ['leadforms_go_site_origin' => 'https://new.example/site'];

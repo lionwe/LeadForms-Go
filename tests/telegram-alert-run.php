@@ -13,6 +13,7 @@ namespace {
 	function absint(mixed $value): int { return abs((int) $value); }
 	function __(string $value): string { return $value; }
 	function sanitize_text_field(string $value): string { return trim(strip_tags($value)); }
+	function sanitize_key(string $value): string { return preg_replace('/[^a-z0-9_\-]/', '', strtolower($value)); }
 	function esc_html(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 	function esc_url(string $value): string { return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 	function admin_url(string $path): string { return 'https://example.com/wp-admin/' . $path; }
@@ -49,7 +50,14 @@ namespace LeadFormsGo {
 
 	final class Settings
 	{
-		public static function section(string $section): array { return ['enabled' => false, 'token' => 'configured-token', 'chat_id' => '-100123456']; }
+		public static function section(string $section): array
+		{
+			return [
+				'enabled' => ! empty($GLOBALS['alert_integrations_enabled'][$section]),
+				'token' => 'configured-token',
+				'chat_id' => '-100123456',
+			];
+		}
 	}
 
 	final class Connection_Profiles
@@ -66,7 +74,9 @@ namespace {
 	$GLOBALS['alert_option'] = [
 		'previous' => 'https://old.example', 'current' => 'https://new.example',
 		'cancelled' => 3, 'telegram_alert_status' => 'pending', 'telegram_alert_attempts' => 0,
+		'reminder_integrations' => ['telegram'],
 	];
+	$GLOBALS['alert_integrations_enabled'] = [];
 	$GLOBALS['alert_responses'] = [$success];
 	$GLOBALS['alert_requests'] = [];
 	$GLOBALS['alert_scheduled'] = false;
@@ -81,8 +91,32 @@ namespace {
 		fwrite(STDERR, "A disabled integration must still use stored Telegram credentials to send the site-transfer alert.\n");
 		exit(1);
 	}
+	$first_reminder = $GLOBALS['alert_scheduled'];
+	if ($first_reminder === false || $first_reminder < time() + 1799 || $first_reminder > time() + 1801) {
+		fwrite(STDERR, "A successful initial alert must schedule the first reminder after 30 minutes.\n");
+		exit(1);
+	}
+	$GLOBALS['alert_scheduled'] = false;
+	$GLOBALS['alert_responses'] = [$success];
+	Telegram_Interactions::send_site_transfer_alert();
+	$reminder_sent = count($GLOBALS['alert_requests']) === 2
+		&& str_contains((string) ($GLOBALS['alert_requests'][1]['args']['body']['text'] ?? ''), 'Нагадування')
+		&& str_contains((string) ($GLOBALS['alert_requests'][1]['args']['body']['text'] ?? ''), 'Telegram')
+		&& $GLOBALS['alert_scheduled'] !== false;
+	if (! $reminder_sent) {
+		fwrite(STDERR, "A still-disabled integration must receive a reminder and schedule the next check.\n");
+		exit(1);
+	}
+	$GLOBALS['alert_scheduled'] = false;
+	$GLOBALS['alert_integrations_enabled']['telegram'] = true;
+	Telegram_Interactions::send_site_transfer_alert();
+	if (count($GLOBALS['alert_requests']) !== 2 || $GLOBALS['alert_scheduled'] !== false) {
+		fwrite(STDERR, "Reminders must stop after the integration is re-enabled.\n");
+		exit(1);
+	}
 	$GLOBALS['alert_option']['telegram_alert_status'] = 'pending';
 	$GLOBALS['alert_option']['telegram_alert_attempts'] = 0;
+	$GLOBALS['alert_option']['reminder_integrations'] = [];
 	$GLOBALS['alert_responses'] = [$success, $success];
 	$GLOBALS['alert_requests'] = [];
 	$GLOBALS['alert_reenter'] = true;
@@ -104,6 +138,7 @@ namespace {
 
 	$GLOBALS['alert_option']['telegram_alert_status'] = 'pending';
 	$GLOBALS['alert_option']['telegram_alert_attempts'] = 2;
+	$GLOBALS['alert_option']['reminder_integrations'] = [];
 	$GLOBALS['alert_scheduled'] = false;
 	$GLOBALS['alert_responses'] = [new WP_Error()];
 	Telegram_Interactions::send_site_transfer_alert();

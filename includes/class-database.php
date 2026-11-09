@@ -316,6 +316,10 @@ final class Database
 				return;
 			}
 
+			$reminder_integrations = array_values(array_filter(
+				['telegram', 'sheets', 'crm'],
+				static fn (string $integration): bool => ! empty(Settings::section($integration)['enabled'])
+			));
 			Settings::disable_integrations();
 			$cancelled = Repositories::cancel_active_deliveries(__('Доставку скасовано після перенесення сайту. Перевірте інтеграції перед повторною відправкою.', 'leadforms-go'));
 			delete_option('leadforms_go_queue_pending');
@@ -324,13 +328,11 @@ final class Database
 				'previous' => $previous,
 				'current' => $current,
 				'cancelled' => $cancelled,
+				'reminder_integrations' => $reminder_integrations,
 				'detected_at' => time(),
 				'telegram_alert_status' => 'pending',
 				'telegram_alert_attempts' => 0,
 			], false);
-			if (! wp_next_scheduled(Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK)) {
-				wp_schedule_single_event(time() + 30, Telegram_Interactions::SITE_TRANSFER_ALERT_HOOK);
-			}
 			$send_alert = true;
 		} finally {
 			delete_option(Telegram_Interactions::SITE_TRANSFER_LOCK_OPTION);

@@ -34,7 +34,11 @@ final class Telegram_Interactions
 	private static function send_site_transfer_alert_locked(): void
 	{
 		$transfer = Database::site_transfer_notice();
-		if ($transfer === [] || ($transfer['telegram_alert_status'] ?? '') !== 'pending') return;
+		$status = (string) ($transfer['telegram_alert_status'] ?? '');
+		if ($transfer === [] || ! in_array($status, ['pending', 'sent'], true)) return;
+		$is_reminder = $status === 'sent';
+		$still_disabled = $is_reminder ? self::disabled_reminder_integrations($transfer) : [];
+		if ($is_reminder && $still_disabled === []) return;
 
 		$settings = Settings::section('telegram');
 		$token = sanitize_text_field((string) ($settings['token'] ?? ''));
@@ -52,30 +56,68 @@ final class Telegram_Interactions
 			return;
 		}
 
-		$previous = esc_html((string) ($transfer['previous'] ?? ''));
-		$current = esc_html((string) ($transfer['current'] ?? ''));
 		$settings_url = esc_url(admin_url('admin.php?page=leadforms-go-settings'));
-		$text = sprintf(
-			__('<b>LeadForms Go: інтеграції вимкнено</b>' . "\n\n" . 'Виявлено зміну домену сайту: %1$s → %2$s.' . "\n" . 'Активні доставки скасовано: %3$d.' . "\n\n" . 'Перейдіть у <a href="%4$s">налаштування інтеграцій</a> в адмінці WordPress і ввімкніть їх знову.', 'leadforms-go'),
-			$previous,
-			$current,
-			(int) ($transfer['cancelled'] ?? 0),
-			$settings_url
-		);
+		if ($is_reminder) {
+			$text = sprintf(
+				__('<b>Нагадування: інтеграції все ще вимкнені</b>' . "\n\n" . 'Не ввімкнено: %1$s.' . "\n" . 'Перейдіть у <a href="%2$s">налаштування інтеграцій</a> в адмінці WordPress.', 'leadforms-go'),
+				esc_html(implode(', ', self::integration_labels($still_disabled))),
+				$settings_url
+			);
+		} else {
+			$previous = esc_html((string) ($transfer['previous'] ?? ''));
+			$current = esc_html((string) ($transfer['current'] ?? ''));
+			$text = sprintf(
+				__('<b>LeadForms Go: інтеграції вимкнено</b>' . "\n\n" . 'Виявлено зміну домену сайту: %1$s → %2$s.' . "\n" . 'Активні доставки скасовано: %3$d.' . "\n\n" . 'Перейдіть у <a href="%4$s">налаштування інтеграцій</a> в адмінці WordPress і ввімкніть їх знову.', 'leadforms-go'),
+				$previous,
+				$current,
+				(int) ($transfer['cancelled'] ?? 0),
+				$settings_url
+			);
+		}
 		$result = self::api($token, 'sendMessage', [
 			'chat_id' => $chat_id,
 			'text' => $text,
 			'parse_mode' => 'HTML',
 			'disable_web_page_preview' => true,
 		]);
+		if ($is_reminder) {
+			$transfer['telegram_reminder_attempts'] = absint($transfer['telegram_reminder_attempts'] ?? 0) + 1;
+			$transfer['telegram_reminder_at'] = time();
+			$transfer['telegram_reminder_status'] = is_wp_error($result) ? 'failed' : 'sent';
+			update_option('leadforms_go_site_transfer', $transfer, false);
+			self::schedule_site_transfer_reminder($transfer);
+			return;
+		}
+
 		$attempts = absint($transfer['telegram_alert_attempts'] ?? 0) + 1;
 		$transfer['telegram_alert_attempts'] = $attempts;
 		$transfer['telegram_alert_status'] = is_wp_error($result) ? ($attempts >= 3 ? 'failed' : 'pending') : 'sent';
 		$transfer['telegram_alert_at'] = time();
 		update_option('leadforms_go_site_transfer', $transfer, false);
+		if (! is_wp_error($result)) self::schedule_site_transfer_reminder($transfer);
 		if (is_wp_error($result) && $attempts < 3 && ! wp_next_scheduled(self::SITE_TRANSFER_ALERT_HOOK)) {
 			wp_schedule_single_event(time() + (5 * MINUTE_IN_SECONDS), self::SITE_TRANSFER_ALERT_HOOK);
 		}
+	}
+
+	private static function disabled_reminder_integrations(array $transfer): array
+	{
+		$eligible = $transfer['reminder_integrations'] ?? [];
+		if (! is_array($eligible)) return [];
+		$eligible = array_values(array_intersect(['telegram', 'sheets', 'crm'], array_map('sanitize_key', $eligible)));
+		return array_values(array_filter($eligible, static fn (string $key): bool => empty(Settings::section($key)['enabled'])));
+	}
+
+	private static function integration_labels(array $integrations): array
+	{
+		$labels = ['telegram' => 'Telegram', 'sheets' => 'Google Sheets', 'crm' => 'CRM'];
+		return array_values(array_map(static fn (string $key): string => $labels[$key] ?? $key, $integrations));
+	}
+
+	private static function schedule_site_transfer_reminder(array $transfer): void
+	{
+		if (self::disabled_reminder_integrations($transfer) === [] || wp_next_scheduled(self::SITE_TRANSFER_ALERT_HOOK)) return;
+		wp_schedule_single_event(time() + self::REMINDER_DELAY, self::SITE_TRANSFER_ALERT_HOOK);
 	}
 
 	private static function acquire_site_transfer_lock(): bool
@@ -438,8 +480,7 @@ final class Telegram_Interactions
 		self::api($token, 'editMessageText', [
 			'chat_id' => $chat_id,
 			'message_id' => $message_id,
-			'text' => $text,
-			'parse_mode' => 'HTML',
+			'rich_message' => wp_json_encode(['html' => Telegram_Message_Formatter::as_rich_html($text)]),
 			'link_preview_options' => wp_json_encode(['is_disabled' => true]),
 			'reply_markup' => wp_json_encode(['inline_keyboard' => $keyboard]),
 		]);

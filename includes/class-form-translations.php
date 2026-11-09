@@ -16,6 +16,7 @@ final class Form_Translations
 			'en_US' => __('English', 'leadforms-go'),
 			'pl_PL' => __('Polski', 'leadforms-go'),
 			'de_DE' => __('Deutsch', 'leadforms-go'),
+			'cs_CZ' => __('Čeština', 'leadforms-go'),
 		];
 		$wp_locale = self::normalize_locale(get_locale());
 		if ($wp_locale !== '' && ! isset($locales[$wp_locale])) {
@@ -41,7 +42,7 @@ final class Form_Translations
 		$language = strtolower($parts[0]);
 		$region = isset($parts[1]) ? strtoupper($parts[1]) : '';
 		if (! preg_match('/^[a-z]{2,3}$/', $language) || ($region !== '' && ! preg_match('/^[A-Z]{2}$/', $region))) return '';
-		if ($region === '' && isset(['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE'][$language])) $region = ['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE'][$language];
+		if ($region === '' && isset(['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE', 'cs' => 'CZ'][$language])) $region = ['uk' => 'UA', 'en' => 'US', 'pl' => 'PL', 'de' => 'DE', 'cs' => 'CZ'][$language];
 		return $region === '' ? $language : $language . '_' . $region;
 	}
 
@@ -108,6 +109,17 @@ final class Form_Translations
 			'tooLong' => 'Die maximale Länge beträgt %d Zeichen.',
 			'emoji' => 'Emojis sind nicht erlaubt.',
 		];
+		if ($language === 'cs') return [
+			'sending' => 'Odesílání…',
+			'success' => 'Děkujeme! Formulář byl úspěšně odeslán.',
+			'error' => 'Formulář se nepodařilo odeslat. Zkuste to prosím znovu.',
+			'required' => 'Vyplňte toto pole.',
+			'invalid' => 'Zkontrolujte správnost zadané hodnoty.',
+			'email' => 'Zadejte platnou e-mailovou adresu.',
+			'phone' => 'Zadejte platné telefonní číslo — alespoň %d číslic.',
+			'tooLong' => 'Maximální délka je %d znaků.',
+			'emoji' => 'Emoji nejsou povoleny.',
+		];
 		return [
 			'sending' => 'Відправка…',
 			'success' => 'Дякуємо! Форму успішно відправлено.',
@@ -127,6 +139,7 @@ final class Form_Translations
 			'en' => 'Send',
 			'pl' => 'Wyślij',
 			'de' => 'Senden',
+			'cs' => 'Odeslat',
 			default => 'Надіслати',
 		};
 	}
@@ -177,6 +190,21 @@ final class Form_Translations
 				'select' => ['label' => 'Option auswählen', 'placeholder' => 'Option auswählen'],
 				'radio' => ['label' => 'Eine Option auswählen', 'placeholder' => ''],
 				'hidden' => ['label' => 'Ausgeblendetes Feld', 'placeholder' => ''],
+			];
+		}
+		if ($language === 'cs') {
+			return [
+				'first_name' => ['label' => 'Jméno', 'placeholder' => 'Vaše jméno'],
+				'last_name' => ['label' => 'Příjmení', 'placeholder' => 'Vaše příjmení'],
+				'phone' => ['label' => 'Telefonní číslo', 'placeholder' => 'Telefonní číslo'],
+				'email' => ['label' => 'E-mail', 'placeholder' => 'jmeno@example.com'],
+				'company' => ['label' => 'Společnost', 'placeholder' => 'Název společnosti'],
+				'city' => ['label' => 'Město', 'placeholder' => 'Vaše město'],
+				'message' => ['label' => 'Zpráva', 'placeholder' => 'Vaše zpráva'],
+				'consent' => ['label' => 'Souhlas se zpracováním osobních údajů', 'placeholder' => ''],
+				'select' => ['label' => 'Vyberte možnost', 'placeholder' => 'Vyberte možnost'],
+				'radio' => ['label' => 'Vyberte jednu možnost', 'placeholder' => ''],
+				'hidden' => ['label' => 'Skryté pole', 'placeholder' => ''],
 			];
 		}
 		return [
@@ -310,7 +338,7 @@ final class Form_Translations
 			}
 		}
 		$defaults = self::default_messages($locale);
-		if ($selected === [] && in_array(self::language($locale), ['en', 'pl', 'de'], true)) {
+		if ($selected === [] && in_array(self::language($locale), ['en', 'pl', 'de', 'cs'], true)) {
 			$default_fields = array_map(static fn (array $field): array => $field + ['options' => []], self::default_fields($locale));
 			return [
 				'submit_label' => self::default_submit_label($locale),
@@ -351,6 +379,6 @@ final class Form_Translations
 
 	private static function has_native_defaults(string $locale): bool
 	{
-		return in_array(self::language($locale), ['uk', 'en', 'pl', 'de'], true);
+		return in_array(self::language($locale), ['uk', 'en', 'pl', 'de', 'cs'], true);
 	}
 }

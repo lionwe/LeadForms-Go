@@ -119,7 +119,7 @@ final class Plugin
 				'default' => $phone['default'],
 				'display' => $phone['display'],
 				'countries' => $phone['countries'],
-				'countryLabels' => ['uk' => 'Код країни', 'en' => 'Country code', 'pl' => 'Kod kraju', 'de' => 'Ländervorwahl'],
+				'countryLabels' => ['uk' => 'Код країни', 'en' => 'Country code', 'pl' => 'Kod kraju', 'de' => 'Ländervorwahl', 'cs' => 'Předvolba země'],
 			],
 			'messages' => [
 				'sending' => __('Відправка…', 'leadforms-go'),

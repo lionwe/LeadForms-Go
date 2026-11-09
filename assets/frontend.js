@@ -111,9 +111,11 @@ class PhoneMask {
 	constructor(input, config = {}, locale = 'uk_UA') {
 		this.input = input;
 		this.config = config && typeof config === 'object' ? config : {};
-		this.locale = String(locale || 'uk_UA').replace('_', '-');
+		this.locale = String(locale || 'uk_UA').replaceAll('_', '-');
 		this.countries = this.config.countries && typeof this.config.countries === 'object' ? this.config.countries : {};
-		this.country = this.countries[this.config.default] ? this.config.default : Object.keys(this.countries)[0];
+		const localeCountry = this.locale.split('-').slice(1).find((part) => /^[A-Z]{2}$/i.test(part))?.toUpperCase();
+		const defaultCountry = this.countries[this.config.default] ? this.config.default : Object.keys(this.countries)[0];
+		this.country = this.countries[localeCountry] ? localeCountry : defaultCountry;
 		this.pattern = this.country ? this.countries[this.country].mask : (input.dataset.leadformsGoMask || '');
 		this.prefixDigits = this.country ? String(this.countries[this.country].dial) : (this.pattern.split('0', 1)[0].match(/\d/g) || []).join('');
 		if (!this.pattern) return;
